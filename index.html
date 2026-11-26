@@ -944,25 +944,32 @@
 
                 isApplyingRemoteSync = true;
                 try {
-                    const playlistChanged = JSON.stringify(data.activeEventPlaylist || null) !== JSON.stringify(activeEventPlaylist);
+                    const remotePlaylist = Array.isArray(data.activeEventPlaylist) ? data.activeEventPlaylist : null;
+                    const playlistChanged = JSON.stringify(remotePlaylist) !== JSON.stringify(activeEventPlaylist);
                     const indexChanged = (data.activeEventIndex || 0) !== activeEventIndex;
                     const songChanged = !currentSong || currentSong.id !== data.songId;
 
-                    if (playlistChanged || indexChanged || songChanged) {
-                        activeEventPlaylist = Array.isArray(data.activeEventPlaylist) ? data.activeEventPlaylist : null;
-                        activeEventIndex = data.activeEventIndex || 0;
+                    activeEventPlaylist = remotePlaylist;
+                    activeEventIndex = data.activeEventIndex || 0;
+
+                    if (songChanged || playlistChanged || indexChanged) {
                         openSongReader(data.songId, {
                             sectionId: data.activeSectionId || null,
                             scrollStamp: data.scrollStamp || 0,
                             fromRemote: true
                         });
                     } else {
+                        if (activeEventPlaylist) {
+                            populateEventPlaylistBar();
+                        }
                         if (data.activeSectionId) {
                             highlightActiveSection(data.activeSectionId);
                         }
                         if (data.activeSectionId && data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp) {
                             lastHandledScrollStamp = data.scrollStamp;
-                            requestAnimationFrame(() => scrollToSection(data.activeSectionId));
+                            requestAnimationFrame(() => {
+                                setTimeout(() => scrollToSection(data.activeSectionId), 80);
+                            });
                         }
                     }
                 } finally {
@@ -1773,10 +1780,13 @@
             renderChart();
 
             if (syncOptions.fromRemote) {
-                highlightActiveSection(syncOptions.sectionId || null);
-                if (syncOptions.sectionId && syncOptions.scrollStamp && syncOptions.scrollStamp !== lastHandledScrollStamp) {
+                const targetSec = syncOptions.sectionId || (currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null);
+                highlightActiveSection(targetSec);
+                if (targetSec && syncOptions.scrollStamp && syncOptions.scrollStamp !== lastHandledScrollStamp) {
                     lastHandledScrollStamp = syncOptions.scrollStamp;
-                    setTimeout(() => scrollToSection(syncOptions.sectionId), 200);
+                    requestAnimationFrame(() => {
+                        setTimeout(() => scrollToSection(targetSec), 180);
+                    });
                 }
             } else {
                 const firstSecId = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null;
