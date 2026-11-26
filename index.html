@@ -999,6 +999,7 @@
         auth.onAuthStateChanged((user) => {
             if (user) {
                 currentUser = user;
+                localStorage.setItem('setlist_last_uid', user.uid);
                 document.getElementById('authView').classList.add('hidden');
                 document.getElementById('homeView').classList.remove('hidden');
                 document.getElementById('userEmailDisplay').innerText = `Sesión: ${user.email || user.displayName}`;
@@ -1006,6 +1007,18 @@
                 subscribeLiveRoom();
                 loadDataForUser();
             } else {
+                const lastUid = localStorage.getItem('setlist_last_uid');
+                const cachedGlobal = loadOfflineSnapshot('setlist_offline_global_songs', null);
+                if (!navigator.onLine && lastUid && Array.isArray(cachedGlobal) && cachedGlobal.length > 0) {
+                    currentUser = { uid: lastUid, email: 'SESIÓN LOCAL' };
+                    document.getElementById('authView').classList.add('hidden');
+                    document.getElementById('homeView').classList.remove('hidden');
+                    document.getElementById('userEmailDisplay').innerText = 'Sesión: MODO SIN CONEXIÓN';
+                    updateSyncUI();
+                    loadDataForUser();
+                    return;
+                }
+
                 currentUser = null;
                 if (liveRoomUnsubscribe) {
                     liveRoomUnsubscribe();
@@ -1034,7 +1047,10 @@
             auth.createUserWithEmailAndPassword(email, pass).catch(e => alert("Error: " + e.message));
         }
 
-        function logout() { auth.signOut(); }
+        function logout() {
+            localStorage.removeItem('setlist_last_uid');
+            auth.signOut();
+        }
 
         function loadDataForUser() {
             db.collection("songs").onSnapshot((snapshot) => {
@@ -1060,12 +1076,18 @@
         }
 
         function getEffectiveSongs() {
-            return globalSongs.map(song => {
+            const baseSongs = globalSongs.map(song => {
                 if (userCustomSongs[song.id]) {
                     return { ...song, ...userCustomSongs[song.id], isCustomized: true };
                 }
                 return { ...song, isCustomized: false };
             });
+
+            const extraCustom = Object.entries(userCustomSongs)
+                .filter(([id]) => !globalSongs.some(g => g.id === id))
+                .map(([id, data]) => ({ id, ...data, isCustomized: true }));
+
+            return [...baseSongs, ...extraCustom];
         }
 
         function switchHomeTab(tab) {
@@ -2471,10 +2493,10 @@
         // --- SOPORTE OFFLINE: RESPALDO LOCAL, COLA Y ESTADO DE RED ---
         const OFFLINE_KEYS = {
             globalSongs: 'setlist_offline_global_songs',
-            customSongs: (uid) => `setlist_offline_custom_songs_${uid}`,
-            events: (uid) => `setlist_offline_events_${uid}`,
-            annotations: (uid, songId) => `setlist_offline_annotations_${uid}_${songId}`,
-            queue: (uid) => `setlist_offline_queue_${uid}`
+            customSongs: (uid) => `setlist_offline_custom_songs_${uid || 'default'}`,
+            events: (uid) => `setlist_offline_events_${uid || 'default'}`,
+            annotations: (uid, songId) => `setlist_offline_annotations_${uid || 'default'}_${songId}`,
+            queue: (uid) => `setlist_offline_queue_${uid || 'default'}`
         };
 
         function updateNetworkBadge(extraText = '') {
@@ -2482,7 +2504,8 @@
             if (!badge) return;
 
             const online = navigator.onLine;
-            const pendingCount = currentUser ? getPendingQueue(currentUser.uid).length : 0;
+            const uid = currentUser ? currentUser.uid : localStorage.getItem('setlist_last_uid');
+            const pendingCount = uid ? getPendingQueue(uid).length : 0;
 
             if (!online) {
                 badge.innerText = pendingCount > 0 ? `SIN CONEXIÓN (${pendingCount} pend.)` : 'SIN CONEXIÓN';
@@ -2522,8 +2545,8 @@
         }
 
         function enqueueOfflineAction(action) {
-            if (!currentUser) return;
-            const uid = currentUser.uid;
+            const uid = currentUser ? currentUser.uid : localStorage.getItem('setlist_last_uid');
+            if (!uid) return;
             const queue = getPendingQueue(uid);
             queue.push({ ...action, queuedAt: Date.now() });
             saveOfflineSnapshot(OFFLINE_KEYS.queue(uid), queue);
@@ -2569,40 +2592,56 @@
             updateNetworkBadge();
         }
 
-        const _origLoadDataForUser = loadDataForUser;
-        loadDataForUser = function() {
+        function hydrateFromLocalSnapshots() {
+            const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
             const cachedGlobal = loadOfflineSnapshot(OFFLINE_KEYS.globalSongs, null);
-            if (cachedGlobal && Array.isArray(cachedGlobal) && globalSongs.length === 0) {
+            if (Array.isArray(cachedGlobal) && cachedGlobal.length > 0) {
                 globalSongs = cachedGlobal;
             }
 
-            if (currentUser) {
-                const cachedCustom = loadOfflineSnapshot(OFFLINE_KEYS.customSongs(currentUser.uid), null);
-                if (cachedCustom && Object.keys(userCustomSongs).length === 0) {
-                    userCustomSongs = cachedCustom;
+            if (uid) {
+                const cachedCustom = loadOfflineSnapshot(OFFLINE_KEYS.customSongs(uid), null);
+                if (cachedCustom && typeof cachedCustom === 'object') {
+                    userCustomSongs = { ...cachedCustom, ...userCustomSongs };
                 }
-                const cachedEvents = loadOfflineSnapshot(OFFLINE_KEYS.events(currentUser.uid), null);
-                if (cachedEvents && Object.keys(userEvents).length === 0) {
-                    userEvents = cachedEvents;
+
+                const cachedEvents = loadOfflineSnapshot(OFFLINE_KEYS.events(uid), null);
+                if (cachedEvents && typeof cachedEvents === 'object') {
+                    userEvents = { ...cachedEvents, ...userEvents };
                 }
-                renderHomeView();
-                if (currentHomeTab === 'events') renderEventsView();
             }
 
+            if (currentHomeTab === 'songs') renderHomeView();
+            else renderEventsView();
+        }
+
+        const _origLoadDataForUser = loadDataForUser;
+        loadDataForUser = function() {
+            hydrateFromLocalSnapshots();
+
             db.collection("songs").onSnapshot((snapshot) => {
-                globalSongs = [];
-                snapshot.forEach((doc) => { globalSongs.push({ id: doc.id, ...doc.data() }); });
-                saveOfflineSnapshot(OFFLINE_KEYS.globalSongs, globalSongs);
+                const freshGlobal = [];
+                snapshot.forEach((doc) => { freshGlobal.push({ id: doc.id, ...doc.data() }); });
+                if (!snapshot.metadata.fromCache || freshGlobal.length > 0) {
+                    globalSongs = freshGlobal;
+                    saveOfflineSnapshot(OFFLINE_KEYS.globalSongs, globalSongs);
+                } else {
+                    hydrateFromLocalSnapshots();
+                }
                 loadUserData();
+                renderHomeView();
             }, () => {
+                hydrateFromLocalSnapshots();
                 updateNetworkBadge();
             });
         };
 
         const _origLoadUserData = loadUserData;
         loadUserData = function() {
-            if (!currentUser) return;
-            const uid = currentUser.uid;
+            const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
+            if (!uid) return;
+
+            hydrateFromLocalSnapshots();
 
             db.collection("users").doc(uid).collection("custom_songs").onSnapshot((snapshot) => {
                 const freshCustom = {};
@@ -2610,9 +2649,15 @@
                 if (!snapshot.metadata.fromCache || Object.keys(freshCustom).length > 0) {
                     userCustomSongs = freshCustom;
                     saveOfflineSnapshot(OFFLINE_KEYS.customSongs(uid), userCustomSongs);
+                } else {
+                    const cachedCustom = loadOfflineSnapshot(OFFLINE_KEYS.customSongs(uid), null);
+                    if (cachedCustom && typeof cachedCustom === 'object') {
+                        userCustomSongs = cachedCustom;
+                    }
                 }
                 renderHomeView();
             }, () => {
+                hydrateFromLocalSnapshots();
                 updateNetworkBadge();
             });
 
@@ -2622,9 +2667,15 @@
                 if (!snapshot.metadata.fromCache || Object.keys(freshEvents).length > 0) {
                     userEvents = freshEvents;
                     saveOfflineSnapshot(OFFLINE_KEYS.events(uid), userEvents);
+                } else {
+                    const cachedEvents = loadOfflineSnapshot(OFFLINE_KEYS.events(uid), null);
+                    if (cachedEvents && typeof cachedEvents === 'object') {
+                        userEvents = cachedEvents;
+                    }
                 }
                 if (currentHomeTab === 'events') renderEventsView();
             }, () => {
+                hydrateFromLocalSnapshots();
                 updateNetworkBadge();
             });
 
@@ -2633,12 +2684,13 @@
 
         const _origLoadSongAnnotations = loadSongAnnotations;
         loadSongAnnotations = async function(songId) {
-            if (!currentUser || !songId) return;
+            const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
+            if (!uid || !songId) return;
             resizeCanvas(false);
             mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
             document.querySelectorAll('.user-text-input').forEach(el => el.remove());
 
-            const localSaved = loadOfflineSnapshot(OFFLINE_KEYS.annotations(currentUser.uid, songId), null);
+            const localSaved = loadOfflineSnapshot(OFFLINE_KEYS.annotations(uid, songId), null);
             if (localSaved && localSaved.imageData) {
                 const img = new Image();
                 img.onload = () => {
@@ -2651,14 +2703,14 @@
                 img.src = localSaved.imageData;
             }
 
-            if (navigator.onLine) {
+            if (navigator.onLine && currentUser) {
                 try {
-                    const docRef = db.collection("users").doc(currentUser.uid).collection("annotations").doc(songId);
+                    const docRef = db.collection("users").doc(uid).collection("annotations").doc(songId);
                     const doc = await docRef.get();
                     if (doc.exists && doc.data().imageData) {
                         const remoteData = doc.data().imageData;
                         if (!localSaved || localSaved.imageData !== remoteData) {
-                            saveOfflineSnapshot(OFFLINE_KEYS.annotations(currentUser.uid, songId), { imageData: remoteData });
+                            saveOfflineSnapshot(OFFLINE_KEYS.annotations(uid, songId), { imageData: remoteData });
                             const img = new Image();
                             img.onload = () => {
                                 if (!currentSong || currentSong.id !== songId) return;
@@ -2679,8 +2731,8 @@
 
         const _origSaveSongAnnotations = saveSongAnnotations;
         saveSongAnnotations = async function(immediate = false) {
-            if (!currentUser || !currentSong) return;
-            const uid = currentUser.uid;
+            const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
+            if (!uid || !currentSong) return;
             const targetSongId = currentSong.id;
 
             let imageData = mainBufferCanvas.toDataURL("image/png");
@@ -2690,7 +2742,7 @@
 
             saveOfflineSnapshot(OFFLINE_KEYS.annotations(uid, targetSongId), { imageData });
 
-            if (!navigator.onLine) {
+            if (!navigator.onLine || !currentUser) {
                 enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
                 return;
             }
@@ -2716,6 +2768,9 @@
         });
         document.addEventListener('DOMContentLoaded', () => {
             updateNetworkBadge();
+            if (!navigator.onLine) {
+                hydrateFromLocalSnapshots();
+            }
         });
 
         // --- REGISTRO DE SERVICE WORKER PARA CARGA OFFLINE ---
