@@ -248,7 +248,7 @@
                             <span id="syncRoleBadge" class="text-zinc-300">LIBRE</span>
                         </button>
 
-                        <div id="syncMenu" class="absolute right-0 top-full mt-2 bg-gray-950/95 backdrop-blur-xl border border-white/10 rounded-xl p-3.5 shadow-2xl hidden z-50 w-64 space-y-3 text-xs">
+                        <div id="syncMenu" class="fixed left-1/2 -translate-x-1/2 top-28 bg-gray-950/95 backdrop-blur-xl border border-white/10 rounded-xl p-3.5 shadow-2xl hidden z-50 w-64 max-w-[92vw] space-y-3 text-xs">
                             <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
                                 <span class="text-[10px] font-mono tracking-wider text-zinc-400 uppercase font-bold">Modo en Vivo</span>
                                 <span id="syncRoomLabel" class="text-[10px] font-mono text-sky-400 font-bold">Sin sala</span>
@@ -257,15 +257,15 @@
                             <div>
                                 <label class="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Código de Sala Rápido</label>
                                 <div class="flex gap-1.5">
-                                    <input type="text" id="liveRoomInput" oninput="this.value = this.value.toUpperCase()" placeholder="EJ. BANDA1" maxlength="12" class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 font-mono font-bold text-white uppercase focus:outline-none focus:border-sky-500">
-                                    <button onclick="generateQuickRoomCode()" title="Generar código" class="px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg border border-zinc-700 font-mono text-[10px]">🎲</button>
+                                    <input type="text" id="liveRoomInput" oninput="this.value = this.value.toUpperCase()" placeholder="EJ. BANDA1" maxlength="12" class="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 font-mono font-bold text-white uppercase focus:outline-none focus:border-sky-500">
+                                    <button onclick="generateQuickRoomCode()" title="Generar código" class="px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg border border-zinc-700 font-mono text-[10px] shrink-0">🎲</button>
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-3 gap-1.5">
-                                <button id="roleBtnMaster" onclick="setLiveRole('master')" class="py-1.5 rounded-lg bg-zinc-900 hover:bg-amber-600/30 text-zinc-300 hover:text-amber-300 border border-zinc-800 font-mono font-bold text-[10px] transition">MAESTRO</button>
-                                <button id="roleBtnSlave" onclick="setLiveRole('slave')" class="py-1.5 rounded-lg bg-zinc-900 hover:bg-sky-600/30 text-zinc-300 hover:text-sky-300 border border-zinc-800 font-mono font-bold text-[10px] transition">ESCLAVO</button>
-                                <button id="roleBtnOff" onclick="setLiveRole('off')" class="py-1.5 rounded-lg bg-zinc-900 hover:bg-red-600/20 text-zinc-400 hover:text-red-300 border border-zinc-800 font-mono font-bold text-[10px] transition">LIBRE</button>
+                                <button id="roleBtnMaster" onclick="setLiveRole('master')" class="py-1.5 px-1 rounded-lg bg-zinc-900 hover:bg-amber-600/30 text-zinc-300 hover:text-amber-300 border border-zinc-800 font-mono font-bold text-[10px] transition truncate">MAESTRO</button>
+                                <button id="roleBtnSlave" onclick="setLiveRole('slave')" class="py-1.5 px-1 rounded-lg bg-zinc-900 hover:bg-sky-600/30 text-zinc-300 hover:text-sky-300 border border-zinc-800 font-mono font-bold text-[10px] transition truncate">ESCLAVO</button>
+                                <button id="roleBtnOff" onclick="setLiveRole('off')" class="py-1.5 px-1 rounded-lg bg-zinc-900 hover:bg-red-600/20 text-zinc-400 hover:text-red-300 border border-zinc-800 font-mono font-bold text-[10px] transition truncate">LIBRE</button>
                             </div>
 
                             <button id="syncNowBtn" onclick="pushLiveState(true)" class="hidden w-full py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-black font-mono font-black text-[10px] uppercase transition shadow-sm">
@@ -826,10 +826,20 @@
         // --- FUNCIONES DE SINCRONIZACIÓN MAESTRO / ESCLAVO ---
         function toggleSyncMenu(e) {
             e.stopPropagation();
-            document.getElementById('syncMenu').classList.toggle('hidden');
+            const menu = document.getElementById('syncMenu');
+            const isHidden = menu.classList.contains('hidden');
             document.getElementById('keyMenu').classList.add('hidden');
             document.getElementById('capoMenu').classList.add('hidden');
             document.getElementById('scrollMenu').classList.add('hidden');
+
+            if (isHidden) {
+                const btnRect = e.currentTarget.getBoundingClientRect();
+                const topPos = Math.max(70, Math.round(btnRect.bottom + 8));
+                menu.style.top = `${topPos}px`;
+                menu.classList.remove('hidden');
+            } else {
+                menu.classList.add('hidden');
+            }
         }
 
         function generateQuickRoomCode() {
