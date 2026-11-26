@@ -1,0 +1,2461 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" id="appViewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function adjustMobileViewport() {
+            const viewport = document.getElementById('appViewport');
+            const screenWidth = Math.min(window.screen.width, window.innerWidth);
+            if (screenWidth < 640) {
+                viewport.setAttribute('content', 'width=680, user-scalable=yes');
+            }
+        })();
+    </script>
+    <title>Setlist - Atril Digital & Gestión de Repertorio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <!-- SDKs de Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+          apiKey: "AIzaSyCLSkBIt3W5E09azFEalZK1ydk5fnmLW84",
+          authDomain: "atril-virtual.firebaseapp.com",
+          projectId: "atril-virtual",
+          storageBucket: "atril-virtual.firebasestorage.app",
+          messagingSenderId: "84930759933",
+          appId: "1:84930759933:web:5a7ccd19c965e5b7c34294",
+          measurementId: "G-6X08W1G4FP"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+    </script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        stage: {
+                            bg: '#09090b',
+                            card: '#18181b',
+                            cardBorder: '#27272a',
+                            intro: '#22c55e',
+                            introText: '#ffffff',
+                            verse: '#3b82f6',
+                            verseText: '#ffffff',
+                            pre: '#f97316',
+                            preText: '#ffffff',
+                            chorus: '#eab308',
+                            chorusText: '#000000',
+                            bridge: '#6366f1',
+                            bridgeText: '#ffffff',
+                            solo: '#ec4899',
+                            soloText: '#ffffff',
+                            outro: '#64748b',
+                            outroText: '#ffffff'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .chord-lyric-block {
+            white-space: pre-wrap;
+            line-height: 1.7rem;
+            font-family: monospace;
+        }
+        .section-card:target {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        }
+        .section-active-live {
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45), 0 10px 25px rgba(14, 165, 233, 0.15) !important;
+        }
+
+        .chords-bold .chord-item { font-weight: 900 !important; }
+        .chords-normal .chord-item { font-weight: normal !important; }
+        .lyrics-bold .lyric-item { font-weight: bold !important; }
+        .lyrics-normal .lyric-item { font-weight: normal !important; }
+
+        .chord-item { font-family: monospace; color: var(--chord-color, #ffffff); }
+        .lyric-item { font-family: monospace; color: #a1a1aa; }
+        .lyrics-only .chord-item { display: none !important; }
+
+        .size-sm .chord-lyric-block { font-size: 0.875rem; }
+        .size-base .chord-lyric-block { font-size: 1rem; }
+        .size-lg .chord-lyric-block { font-size: 1.25rem; }
+        .size-xl .chord-lyric-block { font-size: 1.5rem; }
+        .size-2xl .chord-lyric-block { font-size: 1.875rem; }
+
+        .btn-futuristic { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-futuristic:active { transform: scale(0.92); }
+        .user-text-input {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.5);
+            border-radius: 6px;
+            padding: 2px 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Estilos del editor y previsualización */
+        .editor-mono-block {
+            white-space: pre;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+            line-height: 1.5rem;
+            font-size: 0.95rem;
+        }
+        .chord-inline-line {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+        .chord-stack {
+            display: inline-flex;
+            flex-direction: column;
+            vertical-align: bottom;
+        }
+        .chord-inline {
+            color: #facc15;
+            font-weight: 900;
+            white-space: pre;
+            line-height: 1.2rem;
+        }
+        .lyric-inline {
+            color: #e4e4e7;
+            white-space: pre;
+            line-height: 1.35rem;
+        }
+
+        @media print {
+            body { background: white !important; color: black !important; }
+            header, button, .no-print, #floatingToolbar, #configMenu, #scrollMenu, #keyMenu, #capoMenu, #syncMenu { display: none !important; }
+            #printPreviewModal { position: static !important; background: white !important; }
+            .bg-white { background: white !important; border: none !important; box-shadow: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-stage-bg text-zinc-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- ==================== AUTENTICACIÓN ==================== -->
+    <div id="authView" class="fixed inset-0 z-50 bg-stage-bg flex items-center justify-center p-4 hidden">
+        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-md w-full p-6 md:p-8 shadow-2xl flex flex-col gap-6">
+            <div class="text-center space-y-1">
+                <h1 class="text-2xl font-black tracking-tight text-white flex items-center justify-center gap-2">
+                    <span class="w-2.5 h-6 bg-indigo-500 rounded-full inline-block"></span>
+                    Setlist
+                </h1>
+                <p class="text-xs text-zinc-400 uppercase tracking-wider font-medium">Inicia sesión para acceder al atril</p>
+            </div>
+            <div class="space-y-4">
+                <button onclick="loginWithGoogle()" class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-900 text-xs font-bold transition shadow-sm active:scale-95">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-8.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.19v3.15C3.17 21.32 7.22 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.19C.43 8.12 0 9.87 0 11.7s.43 3.58 1.19 5.12l4.09-3.15z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.22 0 3.17 2.68 1.19 6.58l4.09 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>
+                    Continuar con Google
+                </button>
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-stage-cardBorder"></div>
+                    <span class="flex-shrink mx-4 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">o con correo</span>
+                    <div class="flex-grow border-t border-stage-cardBorder"></div>
+                </div>
+                <div class="space-y-3 text-xs">
+                    <div>
+                        <label class="text-zinc-400 font-semibold block mb-1">Correo electrónico</label>
+                        <input type="email" id="authEmail" placeholder="musico@setlist.com" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-zinc-400 font-semibold block mb-1">Contraseña</label>
+                        <input type="password" id="authPassword" placeholder="••••••••" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2 pt-2">
+                    <button onclick="loginWithEmail()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition shadow-sm">Iniciar Sesión</button>
+                    <button onclick="registerWithEmail()" class="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 transition">Registrarme</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== VISTA 1: INICIO ==================== -->
+    <div id="homeView" class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 flex flex-col gap-6 hidden">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stage-cardBorder pb-6">
+            <div>
+                <h1 class="text-3xl font-black tracking-tight text-white flex items-center gap-3">
+                    <span class="w-2.5 h-7 bg-indigo-500 rounded-full inline-block"></span>
+                    Setlist
+                </h1>
+                <p id="userEmailDisplay" class="text-xs text-zinc-400 mt-1 uppercase tracking-wider font-medium">Cargando perfil...</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="bg-stage-card border border-stage-cardBorder rounded-xl p-1 flex items-center gap-1 text-xs font-semibold">
+                    <button id="tabSongsBtn" onclick="switchHomeTab('songs')" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition">Repertorio</button>
+                    <button id="tabEventsBtn" onclick="switchHomeTab('events')" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Eventos</button>
+                </div>
+                <button id="primaryActionBtn" onclick="openCreateModal()" class="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 hover:bg-white text-xs font-bold text-zinc-900 transition shadow-sm active:scale-95">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
+                    <span id="primaryBtnText">Nueva Canción</span>
+                </button>
+                <button onclick="logout()" title="Cerrar sesión" class="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition border border-zinc-700">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+            </div>
+        </div>
+        <div id="searchContainer" class="relative">
+            <input type="text" id="searchInput" oninput="filterSongs()" placeholder="Buscar por título o artista..." class="w-full bg-stage-card border border-stage-cardBorder rounded-xl px-4 py-3 pl-11 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition shadow-inner">
+            <svg class="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </div>
+        <div id="songListGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        <div id="eventListGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 hidden"></div>
+    </div>
+
+    <!-- ==================== VISTA 2: ATRIL DIGITAL ==================== -->
+    <div id="readerView" class="hidden flex-1 flex flex-col relative">
+        <header class="sticky top-0 z-40 bg-stage-bg/90 backdrop-blur-md border-b border-stage-cardBorder px-4 py-2.5 shadow-sm">
+            <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <button onclick="showHomeView()" title="Regresar al repertorio" class="p-2 rounded-xl bg-stage-card border border-stage-cardBorder text-zinc-400 hover:text-white transition relative group">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+
+                    <div id="eventPlaylistNav" class="hidden items-center gap-2 bg-stage-card border border-stage-cardBorder px-3 py-1 rounded-xl text-xs">
+                        <button onclick="prevEventSong()" class="p-1 hover:text-indigo-400 transition" title="Canción Anterior">◀</button>
+                        <span id="eventPlaylistInfo" class="font-mono text-zinc-300">1 / 1</span>
+                        <button onclick="nextEventSong()" class="p-1 hover:text-indigo-400 transition" title="Siguiente Canción">▶</button>
+                    </div>
+
+                    <div id="structureBar" class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 scroll-smooth max-w-xs sm:max-w-sm md:max-w-md"></div>
+                </div>
+
+                <!-- CONTROLES SUPERIORES -->
+                <div class="flex flex-wrap items-center gap-1.5 shrink-0 bg-stage-card border border-stage-cardBorder rounded-xl p-1 relative">
+
+                    <!-- SINCRONIZACIÓN MAESTRO / ESCLAVO -->
+                    <div class="relative">
+                        <button id="syncMenuToggleBtn" onclick="toggleSyncMenu(event)" class="px-2.5 py-1.5 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-lg flex items-center gap-1.5 transition text-xs font-mono font-bold shadow-sm" title="Sincronización Maestro / Esclavo">
+                            <span id="syncStatusDot" class="w-2 h-2 rounded-full bg-zinc-500"></span>
+                            <span id="syncRoleBadge" class="text-zinc-300">LIBRE</span>
+                        </button>
+
+                        <div id="syncMenu" class="absolute right-0 top-full mt-2 bg-gray-950/95 backdrop-blur-xl border border-white/10 rounded-xl p-3.5 shadow-2xl hidden z-50 w-64 space-y-3 text-xs">
+                            <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
+                                <span class="text-[10px] font-mono tracking-wider text-zinc-400 uppercase font-bold">Modo en Vivo</span>
+                                <span id="syncRoomLabel" class="text-[10px] font-mono text-sky-400 font-bold">Sin sala</span>
+                            </div>
+
+                            <div>
+                                <label class="text-[10px] font-mono text-zinc-400 uppercase block mb-1">Código de Sala Rápido</label>
+                                <div class="flex gap-1.5">
+                                    <input type="text" id="liveRoomInput" oninput="this.value = this.value.toUpperCase()" placeholder="EJ. BANDA1" maxlength="12" class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 font-mono font-bold text-white uppercase focus:outline-none focus:border-sky-500">
+                                    <button onclick="generateQuickRoomCode()" title="Generar código" class="px-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg border border-zinc-700 font-mono text-[10px]">🎲</button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-1.5">
+                                <button id="roleBtnMaster" onclick="setLiveRole('master')" class="py-1.5 rounded-lg bg-zinc-900 hover:bg-amber-600/30 text-zinc-300 hover:text-amber-300 border border-zinc-800 font-mono font-bold text-[10px] transition">MAESTRO</button>
+                                <button id="roleBtnSlave" onclick="setLiveRole('slave')" class="py-1.5 rounded-lg bg-zinc-900 hover:bg-sky-600/30 text-zinc-300 hover:text-sky-300 border border-zinc-800 font-mono font-bold text-[10px] transition">ESCLAVO</button>
+                                <button id="roleBtnOff" onclick="setLiveRole('off')" class="py-1.5 rounded-lg bg-zinc-900 hover:bg-red-600/20 text-zinc-400 hover:text-red-300 border border-zinc-800 font-mono font-bold text-[10px] transition">LIBRE</button>
+                            </div>
+
+                            <button id="syncNowBtn" onclick="pushLiveState(true)" class="hidden w-full py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-black font-mono font-black text-[10px] uppercase transition shadow-sm">
+                                Enviar Canción Actual
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="h-4 w-px bg-zinc-800 mx-0.5"></div>
+
+                    <!-- Botón Anotar -->
+                    <button id="btnToggleToolbar" class="btn-futuristic p-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg transition-all flex items-center justify-center shadow-sm" title="Modo Anotar">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+
+                    <div class="h-4 w-px bg-zinc-800 mx-0.5"></div>
+
+                    <!-- CONTROL DE TONO -->
+                    <div class="relative">
+                        <button onclick="toggleKeyMenu(event)" class="px-2.5 py-1.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 rounded-lg flex items-center gap-1.5 transition text-xs relative group shadow-sm" title="Cambiar Tono">
+                            <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                            <span id="currentKeyBadge" class="font-mono font-bold text-indigo-400">C</span>
+                        </button>
+
+                        <div id="keyMenu" class="absolute right-0 top-full mt-2 bg-gray-950/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-2xl hidden z-50 w-52 space-y-2">
+                            <div class="flex items-center justify-between border-b border-white/10 pb-1.5">
+                                <span class="text-[10px] font-mono tracking-wider text-zinc-400 uppercase font-semibold">Tonalidad</span>
+                                <span id="origKeyInfo" class="text-[9px] font-mono text-indigo-300">Orig: C</span>
+                            </div>
+                            <div id="keyNotesGrid" class="grid grid-cols-4 gap-1.5"></div>
+                            <button onclick="resetKeyToOriginal()" class="w-full py-1 text-[10px] font-mono font-bold bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white rounded-lg border border-zinc-700/50 transition">
+                                Restablecer Original
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- CONTROL DE CAPO -->
+                    <div class="relative">
+                        <button onclick="toggleCapoMenu(event)" class="px-2.5 py-1.5 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 rounded-lg flex items-center gap-1.5 transition text-xs relative group shadow-sm" title="Cejilla / Capodastro">
+                            <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                            <span id="currentCapoBadge" class="font-mono font-bold text-amber-400">0</span>
+                        </button>
+
+                        <div id="capoMenu" class="absolute right-0 top-full mt-2 bg-gray-950/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-2xl hidden z-50 w-36 space-y-2">
+                            <div class="border-b border-white/10 pb-1.5">
+                                <span class="text-[10px] font-mono tracking-wider text-zinc-400 uppercase font-semibold">Traste Capo</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-1.5">
+                                <button onclick="setCapoValue(0)" class="capo-opt py-1 text-xs font-mono font-bold rounded-lg bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800">0</button>
+                                <button onclick="setCapoValue(1)" class="capo-opt py-1 text-xs font-mono font-bold rounded-lg bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800">1</button>
+                                <button onclick="setCapoValue(2)" class="capo-opt py-1 text-xs font-mono font-bold rounded-lg bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800">2</button>
+                                <button onclick="setCapoValue(3)" class="capo-opt py-1 text-xs font-mono font-bold rounded-lg bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800">3</button>
+                                <button onclick="setCapoValue(4)" class="capo-opt py-1 text-xs font-mono font-bold rounded-lg bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800">4</button>
+                                <button onclick="setCapoValue(5)" class="capo-opt py-1 text-xs font-mono font-bold rounded-lg bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800">5</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="h-4 w-px bg-zinc-800 mx-0.5"></div>
+
+                    <!-- Botón Editar -->
+                    <button onclick="editCurrentSong()" class="p-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300 hover:text-white transition flex items-center justify-center border border-zinc-800" title="Editar Canción">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    </button>
+
+                    <!-- Botón Imprimir -->
+                    <button onclick="openPrintPreview()" class="p-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300 hover:text-white transition flex items-center justify-center border border-zinc-800" title="Imprimir / PDF">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    </button>
+
+                    <!-- Botón Ajustes -->
+                    <button onclick="openSettingsModal()" class="p-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300 hover:text-white transition flex items-center justify-center border border-zinc-800" title="Ajustes">
+                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                    </button>
+
+                    <div class="h-4 w-px bg-zinc-800 mx-0.5"></div>
+
+                    <!-- BOTÓN SCROLL -->
+                    <div class="relative">
+                        <button id="scrollMenuToggleBtn" onclick="toggleScrollMenu(event)" class="p-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 text-zinc-300 hover:text-white transition flex items-center justify-center border border-zinc-800" title="Desplazamiento Automático">
+                            <svg class="w-4 h-4 text-blue-400 fill-current" viewBox="0 0 24 24">
+                                <path d="M4.5 7.5c-.8 0-1.3.9-.8 1.6l7.5 10.5c.4.5 1.2.5 1.6 0l7.5-10.5c.5-.7 0-1.6-.8-1.6H4.5z"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </header>
+
+        <main id="readerMainContainer" class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 space-y-4 chords-bold lyrics-normal size-lg relative select-none">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-2 px-1">
+                <div>
+                    <h1 id="songTitle" class="text-2xl md:text-3xl font-black tracking-tight text-white">---</h1>
+                    <p id="songArtist" class="text-xs font-semibold text-zinc-400 mt-0.5 uppercase tracking-wider">---</p>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-zinc-400 font-mono bg-stage-card px-3 py-1.5 rounded-xl border border-stage-cardBorder">
+                    <span>Tempo: <strong id="songBpm" class="text-white">-- BPM</strong></span>
+                    <span>•</span>
+                    <span>Compás: <strong id="songTimeSig" class="text-white">4/4</strong></span>
+                    <span>•</span>
+                    <span>Tono: <strong id="songOrigKey" class="text-white">--</strong></span>
+                    <span>•</span>
+                    <span id="modeStatus" class="font-mono text-[11px]">ESTADO: <strong class="text-emerald-400 font-medium">LECTURA</strong></span>
+                </div>
+            </div>
+
+            <div id="chartContainer" class="space-y-4 relative"></div>
+            <canvas id="annotationCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-30"></canvas>
+        </main>
+    </div>
+
+    <!-- MENÚ EMERGENTE DE SCROLL EN LA PARTE INFERIOR -->
+    <div id="scrollMenu" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-950/95 backdrop-blur-xl border border-white/10 rounded-2xl px-5 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.8)] hidden z-50 flex items-center gap-4">
+        <div class="flex flex-col gap-1">
+            <span class="text-[9px] uppercase tracking-wider text-zinc-400 font-mono font-semibold">Velocidad</span>
+            <select id="scrollSpeedSelect" onchange="changeScrollSpeed(this.value)" class="bg-zinc-800 text-xs text-white rounded-lg px-2 py-1.5 focus:outline-none border border-zinc-700 font-semibold cursor-pointer">
+                <option value="0">0 (Parado)</option>
+                <option value="1">1</option>
+                <option value="2" selected>2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5 (Rápido)</option>
+            </select>
+        </div>
+        <div class="h-8 w-px bg-zinc-800"></div>
+        <div class="flex flex-col gap-1">
+            <span class="text-[9px] uppercase tracking-wider text-zinc-400 font-mono font-semibold">Estado</span>
+            <button id="scrollPlayBtn" onclick="toggleAutoScroll()" class="flex items-center justify-center p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm" title="Reproducir / Pausar">
+                <svg id="scrollPlayIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- BARRA FLOTANTE DE ANOTACIONES -->
+    <div id="floatingToolbar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-950/80 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-full shadow-[0_0_25px_rgba(0,0,0,0.5)] flex items-center space-x-1.5 z-50 hidden transition-all duration-300">
+        <!-- Lápiz -->
+        <button id="toolPen" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors" title="Lápiz">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+        </button>
+        <!-- Marcador -->
+        <button id="toolHighlighter" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors" title="Marcador">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9.5 3h5l4 4v2.5a1 1 0 01-.3.7l-9 9a1 1 0 01-.7.3H6.5a1 1 0 01-1-1v-3.5a1 1 0 01.3-.7l3.7-3.7V3z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M3 21h18"></path></svg>
+        </button>
+        <!-- Texto -->
+        <button id="toolText" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors font-mono font-bold text-xs" title="Texto">T</button>
+        <!-- Goma / Borrador -->
+        <button id="toolEraser" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors" title="Goma">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21H9l-5.414-5.414a2 2 0 010-2.828l8.586-8.586a2 2 0 012.828 0L21 9.172a2 2 0 010 2.828L13 20h6v1z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m7 11 8 8"></path></svg>
+        </button>
+        <div class="h-4 w-px bg-white/10 mx-1"></div>
+        <button id="btnColorPicker" class="btn-futuristic w-5 h-5 rounded-full border border-white/40 shadow-sm transition-transform hover:scale-110" style="background-color: #facc15;" title="Color"></button>
+        <button id="btnSizeDisplay" class="btn-futuristic font-mono text-[10px] font-medium bg-white/5 hover:bg-white/10 px-2 py-1 rounded-full text-gray-300 border border-white/5"><span id="sizeLabel">3px</span></button>
+        <div class="h-4 w-px bg-white/10 mx-1"></div>
+        <button id="btnClearAll" class="btn-futuristic p-2 rounded-full text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors" title="Limpiar todo">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+        </button>
+    </div>
+
+    <!-- MENÚ DE CONFIGURACIÓN DE TRAZOS -->
+    <div id="configMenu" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-950/90 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-[0_10px_30px_rgba(0,0,0,0.8)] hidden z-50 w-64 space-y-4">
+        <div>
+            <label class="block text-[10px] font-mono tracking-widest text-gray-400 mb-2 uppercase">Color</label>
+            <div class="grid grid-cols-5 gap-2">
+                <button class="w-6 h-6 rounded-full bg-black border border-white/20 color-option" data-color="#000000"></button>
+                <button class="w-6 h-6 rounded-full bg-white border border-white/20 color-option" data-color="#ffffff"></button>
+                <button class="w-6 h-6 rounded-full bg-red-500 color-option" data-color="#ef4444"></button>
+                <button class="w-6 h-6 rounded-full bg-blue-500 color-option" data-color="#3b82f6"></button>
+                <button class="w-6 h-6 rounded-full bg-amber-400 color-option" data-color="#facc15"></button>
+                <button class="w-6 h-6 rounded-full bg-emerald-500 color-option" data-color="#10b981"></button>
+                <button class="w-6 h-6 rounded-full bg-purple-500 color-option" data-color="#a855f7"></button>
+                <button class="w-6 h-6 rounded-full bg-pink-500 color-option" data-color="#ec4899"></button>
+                <button class="w-6 h-6 rounded-full bg-orange-500 color-option" data-color="#f97316"></button>
+                <button class="w-6 h-6 rounded-full bg-gray-400 color-option" data-color="#9ca3af"></button>
+            </div>
+        </div>
+        <div>
+            <div class="flex justify-between text-[10px] font-mono text-gray-400 mb-1">
+                <span id="sliderTitle">Grosor</span>
+                <span id="sliderVal">3 pt</span>
+            </div>
+            <input type="range" id="sizeSlider" min="1" max="50" value="3" class="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+        </div>
+    </div>
+
+    <!-- MODAL DE IMPRESIÓN -->
+    <div id="printPreviewModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-white text-black rounded-2xl max-w-3xl w-full p-6 shadow-2xl flex flex-col max-h-[95vh]">
+            <div class="flex items-center justify-between border-b border-zinc-200 pb-3 mb-4 no-print">
+                <div>
+                    <h3 class="text-base font-black text-zinc-900">Vista Previa de Exportación</h3>
+                    <p class="text-[11px] text-zinc-500">Documento optimizado para impresión</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="downloadPDF()" class="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white transition flex items-center gap-1.5 shadow-sm">PDF</button>
+                    <button onclick="downloadImage2D()" class="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-xs font-bold text-white transition flex items-center gap-1.5 shadow-sm">Imagen</button>
+                    <button onclick="closePrintPreview()" class="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs ml-2">&times;</button>
+                </div>
+            </div>
+            <div id="printSheetContainer" class="flex-1 overflow-y-auto bg-white border border-zinc-200 rounded-xl p-6 space-y-4 font-mono text-sm text-zinc-900 shadow-inner"></div>
+        </div>
+    </div>
+
+    <!-- MODAL DE AJUSTES -->
+    <div id="settingsModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-sm w-full p-6 shadow-2xl flex flex-col gap-5 text-zinc-200">
+            <div class="flex items-center justify-between border-b border-stage-cardBorder pb-3">
+                <h3 class="text-sm font-black uppercase tracking-wider text-white">Ajustes de visualización</h3>
+                <button onclick="closeSettingsModal()" class="text-zinc-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+            <div class="space-y-3 text-xs">
+                <div class="flex items-center justify-between bg-zinc-900/50 px-3.5 py-3 rounded-xl border border-zinc-800">
+                    <span class="font-medium">Solo letra (Cantantes)</span>
+                    <input type="checkbox" id="onlyLyricsToggle" onchange="toggleOnlyLyrics(this.checked)" class="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer">
+                </div>
+                <div class="flex items-center justify-between bg-zinc-900/50 px-3.5 py-3 rounded-xl border border-zinc-800">
+                    <span class="font-medium">Color de Acordes</span>
+                    <input type="color" id="chordColorPicker" value="#ffffff" onchange="updateChordColor(this.value)" class="w-7 h-7 rounded-lg bg-transparent cursor-pointer border border-zinc-700">
+                </div>
+                <div class="flex items-center justify-between bg-zinc-900/50 px-3.5 py-3 rounded-xl border border-zinc-800">
+                    <span class="font-medium">Tamaño de texto</span>
+                    <select id="selectTextSize" onchange="updateTextSize(this.value)" class="bg-zinc-800 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none border border-zinc-700 font-semibold">
+                        <option value="size-sm">Pequeño</option>
+                        <option value="size-base">Mediano</option>
+                        <option value="size-lg" selected>Grande</option>
+                        <option value="size-xl">Muy Grande</option>
+                        <option value="size-2xl">Gigante</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-between bg-zinc-900/50 px-3.5 py-3 rounded-xl border border-zinc-800">
+                    <span class="font-medium">Estilo de Letra</span>
+                    <select id="selectLyricWeight" onchange="updateLyricStyleSetting(this.value)" class="bg-zinc-800 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none border border-zinc-700 font-semibold">
+                        <option value="normal" selected>Regular</option>
+                        <option value="bold">Negrita</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-between bg-zinc-900/50 px-3.5 py-3 rounded-xl border border-zinc-800">
+                    <span class="font-medium">Estilo de Acordes</span>
+                    <select id="selectChordWeight" onchange="updateChordStyleSetting(this.value)" class="bg-zinc-800 text-xs text-white rounded-lg px-2.5 py-1.5 focus:outline-none border border-zinc-700 font-semibold">
+                        <option value="normal">Regular</option>
+                        <option value="bold" selected>Negrita</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end pt-2">
+                <button onclick="closeSettingsModal()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition shadow-sm">Guardar y Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CREACIÓN / EDICIÓN (EDITOR DE CANCIONES INTEGRADO) -->
+    <div id="createModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-6xl w-full p-5 md:p-6 shadow-2xl flex flex-col gap-4 max-h-[95vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-stage-cardBorder pb-3">
+                <h3 id="modalTitle" class="text-sm font-black uppercase tracking-wider text-white">Nueva Canción</h3>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="openPreviewModal()" class="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-200 transition border border-zinc-700 flex items-center gap-1.5 shadow-sm">
+                        👁️ Previsualizar
+                    </button>
+                    <button onclick="closeCreateModal()" class="text-zinc-400 hover:text-white text-lg font-bold px-2">&times;</button>
+                </div>
+            </div>
+            <input type="hidden" id="editSongId">
+            <input type="hidden" id="isCustomEdit" value="false">
+
+            <!-- CONTENEDOR PRINCIPAL EN 2 COLUMNAS -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- COLUMNA IZQUIERDA: HERRAMIENTAS DE INSERCIÓN -->
+                <div class="lg:col-span-5 flex flex-col gap-4">
+
+                    <!-- APARTADO 1: SECCIONES -->
+                    <div class="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2.5">
+                        <span class="text-[10px] font-mono tracking-wider text-indigo-400 uppercase font-bold">1. Secciones de la canción</span>
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>VERSO</option>
+                                <option value="V">Verso General [V]</option>
+                                <option value="V1">Verso 1 [V1]</option>
+                                <option value="V2">Verso 2 [V2]</option>
+                                <option value="V3">Verso 3 [V3]</option>
+                                <option value="V4">Verso 4 [V4]</option>
+                                <option value="V5">Verso 5 [V5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>CORO</option>
+                                <option value="C">Coro General [C]</option>
+                                <option value="C1">Coro 1 [C1]</option>
+                                <option value="C2">Coro 2 [C2]</option>
+                                <option value="C3">Coro 3 [C3]</option>
+                                <option value="C4">Coro 4 [C4]</option>
+                                <option value="C5">Coro 5 [C5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>PUENTE</option>
+                                <option value="B">Puente General [B]</option>
+                                <option value="B1">Puente 1 [B1]</option>
+                                <option value="B2">Puente 2 [B2]</option>
+                                <option value="B3">Puente 3 [B3]</option>
+                                <option value="B4">Puente 4 [B4]</option>
+                                <option value="B5">Puente 5 [B5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>INTRO</option>
+                                <option value="IN">Intro General [IN]</option>
+                                <option value="IN1">Intro 1 [IN1]</option>
+                                <option value="IN2">Intro 2 [IN2]</option>
+                                <option value="IN3">Intro 3 [IN3]</option>
+                                <option value="IN4">Intro 4 [IN4]</option>
+                                <option value="IN5">Intro 5 [IN5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>OTRO</option>
+                                <option value="O">Otro General [O]</option>
+                                <option value="O1">Otro 1 [O1]</option>
+                                <option value="O2">Otro 2 [O2]</option>
+                                <option value="O3">Otro 3 [O3]</option>
+                                <option value="O4">Otro 4 [O4]</option>
+                                <option value="O5">Otro 5 [O5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>FINAL</option>
+                                <option value="F">Final General [F]</option>
+                                <option value="F1">Final 1 [F1]</option>
+                                <option value="F2">Final 2 [F2]</option>
+                                <option value="F3">Final 3 [F3]</option>
+                                <option value="F4">Final 4 [F4]</option>
+                                <option value="F5">Final 5 [F5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>INST</option>
+                                <option value="INS">Inst General [INS]</option>
+                                <option value="INS1">Inst 1 [INS1]</option>
+                                <option value="INS2">Inst 2 [INS2]</option>
+                                <option value="INS3">Inst 3 [INS3]</option>
+                                <option value="INS4">Inst 4 [INS4]</option>
+                                <option value="INS5">Inst 5 [INS5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>CODA</option>
+                                <option value="CODA">Coda General [CODA]</option>
+                                <option value="CODA1">Coda 1 [CODA1]</option>
+                                <option value="CODA2">Coda 2 [CODA2]</option>
+                                <option value="CODA3">Coda 3 [CODA3]</option>
+                                <option value="CODA4">Coda 4 [CODA4]</option>
+                                <option value="CODA5">Coda 5 [CODA5]</option>
+                            </select>
+
+                            <select onchange="handleSectionSelect(this)" class="py-2 px-1.5 bg-zinc-800 hover:bg-indigo-600 text-zinc-200 hover:text-white rounded-lg text-xs font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none">
+                                <option value="" disabled selected>PRE-CORO</option>
+                                <option value="PC">Pre-Coro General [PC]</option>
+                                <option value="PC1">Pre-Coro 1 [PC1]</option>
+                                <option value="PC2">Pre-Coro 2 [PC2]</option>
+                                <option value="PC3">Pre-Coro 3 [PC3]</option>
+                                <option value="PC4">Pre-Coro 4 [PC4]</option>
+                                <option value="PC5">Pre-Coro 5 [PC5]</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- APARTADO 2: ACORDES Y LLAVES -->
+                    <div class="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-mono tracking-wider text-amber-400 uppercase font-bold">2. Acordes y Llaves</span>
+                            <span class="text-[9px] text-zinc-400">6 variaciones c/u</span>
+                        </div>
+                        <button type="button" onclick="insertChordToken('{}')" class="w-full py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded-lg text-xs font-mono font-bold transition border border-amber-500/40 text-center shadow-sm">
+                            {} (Llaves vacías)
+                        </button>
+                        <div id="chordsGridContainer" class="grid grid-cols-4 gap-1.5 pt-1"></div>
+                    </div>
+
+                </div>
+
+                <!-- COLUMNA DERECHA: METADATOS Y EDITOR DE TEXTO -->
+                <div class="lg:col-span-7 flex flex-col gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="text-zinc-400 font-semibold block mb-1">Título</label>
+                            <input type="text" id="newTitle" placeholder="Ej. Glorioso Día" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="text-zinc-400 font-semibold block mb-1">Artista / Grupo</label>
+                            <input type="text" id="newArtist" placeholder="Ej. Passion" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="text-zinc-400 font-semibold block mb-1">Tono Original</label>
+                            <input type="text" id="newKey" placeholder="Ej. D" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-zinc-400 font-semibold block mb-1">BPM</label>
+                                <input type="number" id="newBpm" placeholder="118" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <label class="text-zinc-400 font-semibold block mb-1">Compás</label>
+                                <input type="text" id="newTimeSig" value="4/4" placeholder="4/4" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-xs flex-1 flex flex-col">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="text-zinc-400 font-semibold block">Contenido (Soporta {D} arriba o {D}aquí en línea)</label>
+                            <button type="button" onclick="autoFormatChordPro()" class="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-lg text-[10px] font-mono font-bold transition border border-indigo-500/40 flex items-center gap-1 shadow-sm">
+                                ✨ Autoformatear Acordes
+                            </button>
+                        </div>
+                        <textarea id="newContent" rows="14" placeholder="[V1]&#10;{D}&#10;Aquí estás..." class="w-full flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-4 font-mono text-sm leading-relaxed text-white focus:outline-none focus:border-indigo-500"></textarea>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="flex items-center justify-end gap-2 pt-2 text-xs border-t border-stage-cardBorder">
+                <button onclick="closeCreateModal()" class="px-4 py-2.5 rounded-xl bg-zinc-800 font-bold text-zinc-300 hover:bg-zinc-700 transition">Cancelar</button>
+                <button id="saveBtn" onclick="saveSongData()" class="px-5 py-2.5 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-500 transition shadow-sm">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE PREVISUALIZACIÓN -->
+    <div id="previewModal" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 hidden">
+        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-3xl w-full p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex items-center justify-between border-b border-stage-cardBorder pb-3 mb-4">
+                <div>
+                    <h3 class="text-base font-black text-white">Previsualización de Canción</h3>
+                    <p class="text-[11px] text-zinc-400">Verificación de pares acorde/letra en línea</p>
+                </div>
+                <button onclick="closePreviewModal()" class="text-zinc-400 hover:text-white text-lg font-bold px-2 py-1">&times;</button>
+            </div>
+
+            <div id="previewContentContainer" class="flex-1 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded-xl p-5 space-y-4"></div>
+
+            <div class="flex justify-end pt-4 border-t border-stage-cardBorder mt-4">
+                <button onclick="closePreviewModal()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition">Continuar Editando</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE EVENTO -->
+    <div id="eventModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-stage-cardBorder pb-3">
+                <h3 id="eventModalTitle" class="text-sm font-black uppercase tracking-wider text-white">Nuevo Evento / Setlist</h3>
+                <button onclick="closeEventModal()" class="text-zinc-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+            <input type="hidden" id="editEventId">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                    <label class="text-zinc-400 font-semibold block mb-1">Nombre del Evento</label>
+                    <input type="text" id="eventName" placeholder="Ej. Culto Dominical" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="text-zinc-400 font-semibold block mb-1">Fecha / Hora</label>
+                    <input type="text" id="eventDate" placeholder="Ej. Domingo 10:00 AM" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                </div>
+            </div>
+            <div class="text-xs">
+                <label class="text-zinc-400 font-semibold block mb-1">Notas del Evento</label>
+                <input type="text" id="eventNotes" placeholder="Ej. Llegar 30 min antes" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <div class="text-xs space-y-2">
+                <label class="text-zinc-400 font-semibold block">Seleccionar Canciones</label>
+                <div id="eventSongsSelector" class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 max-h-48 overflow-y-auto space-y-2"></div>
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2 text-xs">
+                <button onclick="closeEventModal()" class="px-4 py-2.5 rounded-xl bg-zinc-800 font-bold text-zinc-300 hover:bg-zinc-700 transition">Cancelar</button>
+                <button onclick="saveEventData()" class="px-5 py-2.5 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-500 transition shadow-sm">Guardar Evento</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        let currentUser = null;
+        let globalSongs = [];
+        let userCustomSongs = {};
+        let userEvents = {};
+        let currentSong = null;
+        let currentTranspose = 0;
+        let currentCapo = 0;
+        let currentHomeTab = 'songs';
+        let activeEventPlaylist = null;
+        let activeEventIndex = 0;
+
+        // --- ESTADO DE SINCRONIZACIÓN MAESTRO / ESCLAVO ---
+        let liveRole = localStorage.getItem('setlist_live_role') || 'off'; // 'off' | 'master' | 'slave'
+        let liveRoomCode = localStorage.getItem('setlist_live_room') || '';
+        let liveRoomUnsubscribe = null;
+        let activeLiveSectionId = null;
+        let lastHandledScrollStamp = 0;
+        let isApplyingRemoteSync = false;
+
+        // --- CONFIGURACIÓN DE LOS 24 MENÚS DESPLEGABLES DE ACORDES (6 OPCIONES CADA UNO) ---
+        const CHORD_MENUS_CONFIG = [
+            { label: 'C',   options: ['C', 'Csus2', 'Csus4', 'C7', 'Cmaj7', 'C/E'] },
+            { label: 'Cm',  options: ['Cm', 'Cm7', 'Cmaj7', 'Cm9', 'Cmadd9', 'Cm/Eb'] },
+            { label: 'D',   options: ['D', 'Dsus2', 'Dsus4', 'D7', 'Dmaj7', 'D/F#'] },
+            { label: 'Dm',  options: ['Dm', 'Dm7', 'Dmaj7', 'Dm9', 'Dmadd9', 'Dm/F'] },
+            { label: 'E',   options: ['E', 'Esus2', 'Esus4', 'E7', 'Emaj7', 'E/G#'] },
+            { label: 'Em',  options: ['Em', 'Em7', 'Emaj7', 'Em9', 'Emadd9', 'Em/G'] },
+            { label: 'F',   options: ['F', 'Fsus2', 'Fsus4', 'F7', 'Fmaj7', 'F/A'] },
+            { label: 'Fm',  options: ['Fm', 'Fm7', 'Fmaj7', 'Fm9', 'Fmadd9', 'Fm/Ab'] },
+            { label: 'G',   options: ['G', 'Gsus2', 'Gsus4', 'G7', 'Gmaj7', 'G/B'] },
+            { label: 'Gm',  options: ['Gm', 'Gm7', 'Gmaj7', 'Gm9', 'Gmadd9', 'Gm/Bb'] },
+            { label: 'A',   options: ['A', 'Asus2', 'Asus4', 'A7', 'Amaj7', 'A/C#'] },
+            { label: 'Am',  options: ['Am', 'Am7', 'Amaj7', 'Am9', 'Amadd9', 'Am/C'] },
+            { label: 'B',   options: ['B', 'Bsus2', 'Bsus4', 'B7', 'Bmaj7', 'B/D#'] },
+            { label: 'Bm',  options: ['Bm', 'Bm7', 'Bmaj7', 'Bm9', 'Bmadd9', 'Bm/D'] },
+            { label: 'C#',  options: ['C#', 'C#sus2', 'C#sus4', 'C#7', 'C#maj7', 'C#/F'] },
+            { label: 'C#m', options: ['C#m', 'C#m7', 'C#maj7', 'C#m9', 'C#madd9', 'C#m/E'] },
+            { label: 'Eb',  options: ['Eb', 'Ebsus2', 'Ebsus4', 'Eb7', 'Ebmaj7', 'Eb/G'] },
+            { label: 'Ebm', options: ['Ebm', 'Ebm7', 'Ebmaj7', 'Ebm9', 'Ebmadd9', 'Ebm/Gb'] },
+            { label: 'F#',  options: ['F#', 'F#sus2', 'F#sus4', 'F#7', 'F#maj7', 'F#/A#'] },
+            { label: 'F#m', options: ['F#m', 'F#m7', 'F#maj7', 'F#m9', 'F#madd9', 'F#m/A'] },
+            { label: 'Ab',  options: ['Ab', 'Absus2', 'Absus4', 'Ab7', 'Abmaj7', 'Ab/C'] },
+            { label: 'Abm', options: ['Abm', 'Abm7', 'Abmaj7', 'Abm9', 'Abmadd9', 'Abm/B'] },
+            { label: 'Bb',  options: ['Bb', 'Bbsus2', 'Bbsus4', 'Bb7', 'Bbmaj7', 'Bb/D'] },
+            { label: 'Bbm', options: ['Bbm', 'Bbm7', 'Bbmaj7', 'Bbm9', 'Bbmadd9', 'Bbm/Db'] }
+        ];
+
+        function buildChordDropdowns() {
+            const grid = document.getElementById('chordsGridContainer');
+            if (!grid) return;
+
+            grid.innerHTML = CHORD_MENUS_CONFIG.map(group => {
+                const optionsHtml = group.options
+                    .map(opt => `<option value="${opt}">${opt}</option>`)
+                    .join('');
+                return `
+                    <select onchange="handleChordSelect(this)" class="py-1.5 px-1 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-mono font-bold transition border border-zinc-700/50 cursor-pointer focus:outline-none text-center">
+                        <option value="" disabled selected>${group.label}</option>
+                        ${optionsHtml}
+                    </select>
+                `;
+            }).join('');
+        }
+
+        function handleChordSelect(selectElement) {
+            const chord = selectElement.value;
+            if (!chord) return;
+            insertChordToken(chord);
+            selectElement.selectedIndex = 0;
+        }
+
+        buildChordDropdowns();
+
+        // --- FUNCIONES DE SINCRONIZACIÓN MAESTRO / ESCLAVO ---
+        function toggleSyncMenu(e) {
+            e.stopPropagation();
+            document.getElementById('syncMenu').classList.toggle('hidden');
+            document.getElementById('keyMenu').classList.add('hidden');
+            document.getElementById('capoMenu').classList.add('hidden');
+            document.getElementById('scrollMenu').classList.add('hidden');
+        }
+
+        function generateQuickRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 5; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            const input = document.getElementById('liveRoomInput');
+            if (input) input.value = code;
+            liveRoomCode = code;
+            localStorage.setItem('setlist_live_room', liveRoomCode);
+            updateSyncUI();
+            subscribeLiveRoom();
+        }
+
+        function setLiveRole(role) {
+            const input = document.getElementById('liveRoomInput');
+            const code = (input ? input.value : liveRoomCode).trim().toUpperCase();
+
+            if (role !== 'off' && !code) {
+                alert("Escribe o genera un código de sala rápido primero (ej. BANDA1).");
+                return;
+            }
+
+            liveRoomCode = code;
+            liveRole = role;
+            localStorage.setItem('setlist_live_role', liveRole);
+            localStorage.setItem('setlist_live_room', liveRoomCode);
+
+            updateSyncUI();
+            subscribeLiveRoom();
+
+            if (liveRole === 'master' && currentSong) {
+                pushLiveState(true);
+            }
+        }
+
+        function updateSyncUI() {
+            const badge = document.getElementById('syncRoleBadge');
+            const dot = document.getElementById('syncStatusDot');
+            const roomLabel = document.getElementById('syncRoomLabel');
+            const input = document.getElementById('liveRoomInput');
+            const syncNowBtn = document.getElementById('syncNowBtn');
+            const btnMaster = document.getElementById('roleBtnMaster');
+            const btnSlave = document.getElementById('roleBtnSlave');
+            const btnOff = document.getElementById('roleBtnOff');
+
+            if (input && input.value !== liveRoomCode && liveRoomCode) {
+                input.value = liveRoomCode;
+            }
+            if (roomLabel) {
+                roomLabel.innerText = liveRoomCode ? `Sala: ${liveRoomCode}` : 'Sin sala';
+            }
+
+            if (btnMaster) btnMaster.className = `py-1.5 rounded-lg font-mono font-bold text-[10px] transition border ${liveRole === 'master' ? 'bg-amber-500 text-black border-amber-400' : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'}`;
+            if (btnSlave) btnSlave.className = `py-1.5 rounded-lg font-mono font-bold text-[10px] transition border ${liveRole === 'slave' ? 'bg-sky-500 text-black border-sky-400' : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800'}`;
+            if (btnOff) btnOff.className = `py-1.5 rounded-lg font-mono font-bold text-[10px] transition border ${liveRole === 'off' ? 'bg-zinc-700 text-white border-zinc-600' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-800'}`;
+
+            if (syncNowBtn) {
+                if (liveRole === 'master') syncNowBtn.classList.remove('hidden');
+                else syncNowBtn.classList.add('hidden');
+            }
+
+            if (!badge || !dot) return;
+
+            if (liveRole === 'master') {
+                badge.innerText = liveRoomCode ? `MAESTRO · ${liveRoomCode}` : 'MAESTRO';
+                badge.className = 'text-amber-400';
+                dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+            } else if (liveRole === 'slave') {
+                badge.innerText = liveRoomCode ? `ESCLAVO · ${liveRoomCode}` : 'ESCLAVO';
+                badge.className = 'text-sky-400';
+                dot.className = 'w-2 h-2 rounded-full bg-sky-400 animate-pulse';
+            } else {
+                badge.innerText = 'LIBRE';
+                badge.className = 'text-zinc-300';
+                dot.className = 'w-2 h-2 rounded-full bg-zinc-500';
+            }
+        }
+
+        function subscribeLiveRoom() {
+            if (liveRoomUnsubscribe) {
+                liveRoomUnsubscribe();
+                liveRoomUnsubscribe = null;
+            }
+
+            if (!currentUser || liveRole !== 'slave' || !liveRoomCode) return;
+
+            liveRoomUnsubscribe = db.collection("liveRooms").doc(liveRoomCode).onSnapshot((doc) => {
+                if (!doc.exists || liveRole !== 'slave') return;
+                const data = doc.data();
+                if (!data || !data.songId) return;
+
+                isApplyingRemoteSync = true;
+                try {
+                    const playlistChanged = JSON.stringify(data.activeEventPlaylist || null) !== JSON.stringify(activeEventPlaylist);
+                    const indexChanged = (data.activeEventIndex || 0) !== activeEventIndex;
+                    const songChanged = !currentSong || currentSong.id !== data.songId;
+
+                    if (playlistChanged || indexChanged || songChanged) {
+                        activeEventPlaylist = Array.isArray(data.activeEventPlaylist) ? data.activeEventPlaylist : null;
+                        activeEventIndex = data.activeEventIndex || 0;
+                        openSongReader(data.songId, {
+                            sectionId: data.activeSectionId || null,
+                            scrollStamp: data.scrollStamp || 0,
+                            fromRemote: true
+                        });
+                    } else {
+                        if (data.activeSectionId && data.activeSectionId !== activeLiveSectionId) {
+                            highlightActiveSection(data.activeSectionId);
+                        }
+                        if (data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp && data.activeSectionId) {
+                            lastHandledScrollStamp = data.scrollStamp;
+                            scrollToSection(data.activeSectionId);
+                        }
+                    }
+                } finally {
+                    setTimeout(() => { isApplyingRemoteSync = false; }, 120);
+                }
+            });
+        }
+
+        async function pushLiveState(forceScroll = false) {
+            if (!currentUser || liveRole !== 'master' || !liveRoomCode || !currentSong || isApplyingRemoteSync) return;
+
+            const scrollStamp = forceScroll ? Date.now() : lastHandledScrollStamp;
+            if (forceScroll) lastHandledScrollStamp = scrollStamp;
+
+            try {
+                await db.collection("liveRooms").doc(liveRoomCode).set({
+                    songId: currentSong.id,
+                    activeEventPlaylist: activeEventPlaylist || null,
+                    activeEventIndex: activeEventIndex || 0,
+                    activeSectionId: activeLiveSectionId || null,
+                    scrollStamp: scrollStamp,
+                    masterUid: currentUser.uid,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            } catch (e) {
+                console.error("Error al sincronizar sala en vivo:", e);
+            }
+        }
+
+        function highlightActiveSection(sectionId) {
+            activeLiveSectionId = sectionId;
+            document.querySelectorAll('.section-card').forEach(card => {
+                card.classList.remove('section-active-live');
+            });
+            if (sectionId) {
+                const targetCard = document.getElementById(sectionId);
+                if (targetCard) targetCard.classList.add('section-active-live');
+            }
+        }
+
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                currentUser = user;
+                document.getElementById('authView').classList.add('hidden');
+                document.getElementById('homeView').classList.remove('hidden');
+                document.getElementById('userEmailDisplay').innerText = `Sesión: ${user.email || user.displayName}`;
+                updateSyncUI();
+                subscribeLiveRoom();
+                loadDataForUser();
+            } else {
+                currentUser = null;
+                if (liveRoomUnsubscribe) {
+                    liveRoomUnsubscribe();
+                    liveRoomUnsubscribe = null;
+                }
+                document.getElementById('homeView').classList.add('hidden');
+                document.getElementById('readerView').classList.add('hidden');
+                document.getElementById('authView').classList.remove('hidden');
+            }
+        });
+
+        function loginWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch(e => alert("Error de Google: " + e.message));
+        }
+
+        function loginWithEmail() {
+            const email = document.getElementById('authEmail').value;
+            const pass = document.getElementById('authPassword').value;
+            auth.signInWithEmailAndPassword(email, pass).catch(e => alert("Error: " + e.message));
+        }
+
+        function registerWithEmail() {
+            const email = document.getElementById('authEmail').value;
+            const pass = document.getElementById('authPassword').value;
+            auth.createUserWithEmailAndPassword(email, pass).catch(e => alert("Error: " + e.message));
+        }
+
+        function logout() { auth.signOut(); }
+
+        function loadDataForUser() {
+            db.collection("songs").onSnapshot((snapshot) => {
+                globalSongs = [];
+                snapshot.forEach((doc) => { globalSongs.push({ id: doc.id, ...doc.data() }); });
+                loadUserData();
+            });
+        }
+
+        function loadUserData() {
+            if (!currentUser) return;
+            db.collection("users").doc(currentUser.uid).collection("custom_songs").onSnapshot((snapshot) => {
+                userCustomSongs = {};
+                snapshot.forEach((doc) => { userCustomSongs[doc.id] = doc.data(); });
+                renderHomeView();
+            });
+
+            db.collection("users").doc(currentUser.uid).collection("events").onSnapshot((snapshot) => {
+                userEvents = {};
+                snapshot.forEach((doc) => { userEvents[doc.id] = { id: doc.id, ...doc.data() }; });
+                if (currentHomeTab === 'events') renderEventsView();
+            });
+        }
+
+        function getEffectiveSongs() {
+            return globalSongs.map(song => {
+                if (userCustomSongs[song.id]) {
+                    return { ...song, ...userCustomSongs[song.id], isCustomized: true };
+                }
+                return { ...song, isCustomized: false };
+            });
+        }
+
+        function switchHomeTab(tab) {
+            currentHomeTab = tab;
+            const songsBtn = document.getElementById('tabSongsBtn');
+            const eventsBtn = document.getElementById('tabEventsBtn');
+            const searchContainer = document.getElementById('searchContainer');
+            const songGrid = document.getElementById('songListGrid');
+            const eventGrid = document.getElementById('eventListGrid');
+            const btnText = document.getElementById('primaryBtnText');
+            const actionBtn = document.getElementById('primaryActionBtn');
+
+            if (tab === 'songs') {
+                songsBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
+                eventsBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
+                searchContainer.classList.remove('hidden');
+                songGrid.classList.remove('hidden');
+                eventGrid.classList.add('hidden');
+                btnText.innerText = "Nueva Canción";
+                actionBtn.setAttribute("onclick", "openCreateModal()");
+                renderHomeView();
+            } else {
+                eventsBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
+                songsBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
+                searchContainer.classList.add('hidden');
+                songGrid.classList.add('hidden');
+                eventGrid.classList.remove('hidden');
+                btnText.innerText = "Nuevo Evento";
+                actionBtn.setAttribute("onclick", "openEventModal()");
+                renderEventsView();
+            }
+        }
+
+        function parseSectionTag(rawTag) {
+            let clean = rawTag.trim().toUpperCase();
+            let count = null;
+            const countMatch = clean.match(/X\s*(\d+)/);
+            if (countMatch) { count = countMatch[1]; clean = clean.replace(/X\s*\d+/, '').trim(); }
+
+            let type = 'verse';
+            let code = clean;
+            let label = clean;
+
+            if (clean.startsWith('IN') || clean.includes('INTRO')) { type = 'intro'; code = clean; label = 'Intro ' + clean.replace('IN', ''); }
+            else if (clean.startsWith('V')) { type = 'verse'; code = clean; label = 'Verso ' + clean.replace('V', ''); }
+            else if (clean.startsWith('PC') || clean === 'P' || clean.includes('PRE')) { type = 'pre'; code = clean; label = 'Pre-coro ' + clean.replace('PC', '').replace('P', ''); }
+            else if (clean.startsWith('C')) { type = 'chorus'; code = clean; label = clean === 'C' ? 'Coro' : 'Coro ' + clean.replace('C', ''); }
+            else if (clean.startsWith('B') || clean.includes('PUENTE')) { type = 'bridge'; code = clean; label = 'Puente ' + clean.replace('B', ''); }
+            else if (clean.startsWith('INS') || clean.startsWith('S') || clean.includes('SOLO')) { type = 'solo'; code = clean; label = 'Instrumental ' + clean.replace('INS', '').replace('S', ''); }
+            else if (clean.startsWith('O')) { type = 'outro'; code = clean; label = 'Otro ' + clean.replace('O', ''); }
+            else if (clean.startsWith('F') || clean.includes('FINAL')) { type = 'outro'; code = clean; label = 'Final ' + clean.replace('F', ''); }
+            else if (clean.startsWith('CODA')) { type = 'outro'; code = clean; label = 'Coda ' + clean.replace('CODA', ''); }
+
+            return { code, label, type, count };
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedColor = localStorage.getItem('onstage_chord_color') || '#ffffff';
+            document.documentElement.style.setProperty('--chord-color', savedColor);
+            const picker = document.getElementById('chordColorPicker');
+            if (picker) picker.value = savedColor;
+
+            const onlyLyrics = localStorage.getItem('onstage_only_lyrics') === 'true';
+            const toggle = document.getElementById('onlyLyricsToggle');
+            if (toggle) toggle.checked = onlyLyrics;
+            if (onlyLyrics) document.getElementById('readerMainContainer').classList.add('lyrics-only');
+
+            updateSyncUI();
+        });
+
+        function openSettingsModal() { document.getElementById('settingsModal').classList.remove('hidden'); }
+        function closeSettingsModal() { document.getElementById('settingsModal').classList.add('hidden'); }
+
+        function updateChordStyleSetting(value) {
+            const container = document.getElementById('readerMainContainer');
+            if (value === 'bold') container.classList.replace('chords-normal', 'chords-bold');
+            else container.classList.replace('chords-bold', 'chords-normal');
+        }
+
+        function updateLyricStyleSetting(value) {
+            const container = document.getElementById('readerMainContainer');
+            if (value === 'bold') container.classList.replace('lyrics-normal', 'lyrics-bold');
+            else container.classList.replace('lyrics-bold', 'lyrics-normal');
+        }
+
+        function updateTextSize(sizeClass) {
+            const container = document.getElementById('readerMainContainer');
+            container.classList.remove('size-sm', 'size-base', 'size-lg', 'size-xl', 'size-2xl');
+            container.classList.add(sizeClass);
+        }
+
+        function updateChordColor(colorHex) {
+            document.documentElement.style.setProperty('--chord-color', colorHex);
+            localStorage.setItem('onstage_chord_color', colorHex);
+        }
+
+        function toggleOnlyLyrics(isEnabled) {
+            const container = document.getElementById('readerMainContainer');
+            if (isEnabled) {
+                container.classList.add('lyrics-only');
+                localStorage.setItem('onstage_only_lyrics', 'true');
+            } else {
+                container.classList.remove('lyrics-only');
+                localStorage.setItem('onstage_only_lyrics', 'false');
+            }
+        }
+
+        const chromaticScale = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        const flatToSharp = { "Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#" };
+
+        function transposeChordLine(text, steps) {
+            if (steps === 0) return text;
+            return text.replace(/\{(.*?)\}/g, (match, chord) => {
+                let cleanChord = chord.trim();
+                let transposed = cleanChord.replace(/([A-G][b#]?)(m|maj|min|aug|dim|sus\d*|\d*)?(\/[A-G][b#]?)?/g, (fullMatch, root, modifier = "", bass = "") => {
+                    let normalizedRoot = flatToSharp[root] || root;
+                    let rootIndex = chromaticScale.indexOf(normalizedRoot);
+                    if (rootIndex === -1) return fullMatch;
+
+                    let newRootIndex = (rootIndex + steps) % 12;
+                    if (newRootIndex < 0) newRootIndex += 12;
+                    let newRoot = chromaticScale[newRootIndex];
+
+                    let newBass = "";
+                    if (bass) {
+                        let bassNote = bass.replace("/", "");
+                        let normalizedBass = flatToSharp[bassNote] || bassNote;
+                        let bassIndex = chromaticScale.indexOf(normalizedBass);
+                        if (bassIndex !== -1) {
+                            let newBassIndex = (bassIndex + steps) % 12;
+                            if (newBassIndex < 0) newBassIndex += 12;
+                            newBass = "/" + chromaticScale[newBassIndex];
+                        } else { newBass = bass; }
+                    }
+                    return newRoot + modifier + newBass;
+                });
+                return `{${transposed}}`;
+            });
+        }
+
+        function getBadgeClasses(type) {
+            switch(type) {
+                case 'intro': return 'bg-stage-intro text-stage-introText font-bold';
+                case 'verse': return 'bg-stage-verse text-stage-verseText font-bold';
+                case 'pre': return 'bg-stage-pre text-stage-preText font-bold';
+                case 'chorus': return 'bg-stage-chorus text-stage-chorusText font-bold';
+                case 'bridge': return 'bg-stage-bridge text-stage-bridgeText font-bold';
+                case 'solo': return 'bg-stage-solo text-stage-soloText font-bold';
+                case 'outro': return 'bg-stage-outro text-stage-outroText font-bold';
+                default: return 'bg-zinc-700 text-white font-bold';
+            }
+        }
+
+        function renderHomeView() {
+            const grid = document.getElementById('songListGrid');
+            grid.innerHTML = '';
+            const songsToDisplay = getEffectiveSongs();
+
+            songsToDisplay.forEach(song => {
+                const card = document.createElement('div');
+                card.className = "bg-stage-card border border-stage-cardBorder rounded-2xl p-5 hover:border-indigo-500/50 transition flex flex-col justify-between gap-4 group shadow-sm";
+                card.innerHTML = `
+                    <div class="cursor-pointer" onclick="openSongReader('${song.id}')">
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="text-base font-bold text-white group-hover:text-indigo-400 transition">${song.title}</h3>
+                            <div class="flex items-center gap-1.5">
+                                ${song.isCustomized ? '<span class="text-[9px] bg-indigo-950 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-800 font-bold">Personalizada</span>' : ''}
+                                <span class="text-[11px] font-mono font-bold bg-zinc-900 text-indigo-400 px-2 py-0.5 rounded-lg border border-zinc-800">${song.originalKey}</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-zinc-400 mt-1 uppercase tracking-wider">${song.artist}</p>
+                    </div>
+                    <div class="flex items-center justify-between border-t border-stage-cardBorder pt-3 text-xs">
+                        <span class="text-zinc-500 font-mono">${song.bpm ? song.bpm + ' BPM' : 'Sin tempo'}</span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="deleteSongAction('${song.id}', ${song.isCustomized})" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function renderEventsView() {
+            const grid = document.getElementById('eventListGrid');
+            grid.innerHTML = '';
+            const events = Object.values(userEvents);
+
+            if (events.length === 0) {
+                grid.innerHTML = `<p class="text-xs text-zinc-500 col-span-full text-center py-10">No hay eventos creados todavía.</p>`;
+                return;
+            }
+
+            events.forEach(ev => {
+                const card = document.createElement('div');
+                card.className = "bg-stage-card border border-stage-cardBorder rounded-2xl p-5 hover:border-indigo-500/50 transition flex flex-col justify-between gap-4 shadow-sm";
+
+                let songsHtml = '';
+                const songsMap = getEffectiveSongs();
+                if (ev.songIds && ev.songIds.length > 0) {
+                    songsHtml = `<div class="space-y-1 my-2 bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800 text-xs">`;
+                    ev.songIds.forEach((sId, idx) => {
+                        const found = songsMap.find(s => s.id === sId);
+                        songsHtml += `<div class="text-zinc-300 font-medium">${idx + 1}. ${found ? found.title : 'Canción eliminada'}</div>`;
+                    });
+                    songsHtml += `</div>`;
+                } else {
+                    songsHtml = `<p class="text-[11px] text-zinc-500 italic my-2">Sin canciones asignadas</p>`;
+                }
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="text-base font-bold text-white">${ev.name}</h3>
+                            <span class="text-[11px] font-mono bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded-lg border border-indigo-800">${ev.date || 'Sin fecha'}</span>
+                        </div>
+                        <p class="text-xs text-zinc-400 mt-0.5">${ev.notes || 'Sin notas'}</p>
+                        ${songsHtml}
+                    </div>
+                    <div class="flex items-center justify-between border-t border-stage-cardBorder pt-3 text-xs">
+                        <button onclick="startEventPlaylist('${ev.id}')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-sm flex items-center gap-1.5">
+                            Iniciar Evento
+                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openEventModal('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
+                            <button onclick="deleteEventAction('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function filterSongs() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const cards = document.querySelectorAll('#songListGrid > div');
+            const songsToDisplay = getEffectiveSongs();
+            songsToDisplay.forEach((song, idx) => {
+                const match = song.title.toLowerCase().includes(query) || song.artist.toLowerCase().includes(query);
+                if (cards[idx]) cards[idx].style.display = match ? 'flex' : 'none';
+            });
+        }
+
+        async function showHomeView() {
+            if (typeof saveSongAnnotations === 'function') {
+                await saveSongAnnotations(true);
+            }
+
+            document.getElementById('homeView').classList.remove('hidden');
+            document.getElementById('readerView').classList.add('hidden');
+            document.getElementById('eventPlaylistNav').classList.add('hidden');
+
+            activeEventPlaylist = null;
+            activeEventIndex = 0;
+            activeLiveSectionId = null;
+
+            if (floatingToolbar) floatingToolbar.classList.add('hidden');
+            if (configMenu) configMenu.classList.add('hidden');
+            document.getElementById('scrollMenu').classList.add('hidden');
+            document.getElementById('keyMenu').classList.add('hidden');
+            document.getElementById('capoMenu').classList.add('hidden');
+            document.getElementById('syncMenu').classList.add('hidden');
+            setTool(null);
+
+            if (isScrolling) toggleAutoScroll();
+
+            if (currentHomeTab === 'songs') renderHomeView();
+            else renderEventsView();
+        }
+
+        function openSongReader(songId, syncOptions = {}) {
+            const songsToDisplay = getEffectiveSongs();
+            currentSong = songsToDisplay.find(s => s.id === songId);
+            if (!currentSong) return;
+
+            mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+            document.querySelectorAll('.user-text-input').forEach(el => el.remove());
+
+            currentTranspose = 0;
+            currentCapo = 0;
+            document.getElementById('currentCapoBadge').innerText = "0";
+
+            document.getElementById('songTitle').innerText = currentSong.title;
+            document.getElementById('songArtist').innerText = currentSong.artist;
+            document.getElementById('songOrigKey').innerText = currentSong.originalKey;
+            document.getElementById('songBpm').innerText = (currentSong.bpm || '--') + ' BPM';
+            document.getElementById('songTimeSig').innerText = currentSong.timeSig || '4/4';
+
+            document.getElementById('homeView').classList.add('hidden');
+            document.getElementById('readerView').classList.remove('hidden');
+
+            if (activeEventPlaylist) {
+                document.getElementById('eventPlaylistNav').classList.remove('hidden');
+                document.getElementById('eventPlaylistInfo').innerText = `${activeEventIndex + 1} / ${activeEventPlaylist.length}`;
+            } else {
+                document.getElementById('eventPlaylistNav').classList.add('hidden');
+            }
+
+            renderKeyMenuGrid();
+            updateCurrentKeyDisplay();
+            renderStructureBar();
+            renderChart();
+
+            if (syncOptions.fromRemote) {
+                highlightActiveSection(syncOptions.sectionId || null);
+                if (syncOptions.sectionId && syncOptions.scrollStamp && syncOptions.scrollStamp !== lastHandledScrollStamp) {
+                    lastHandledScrollStamp = syncOptions.scrollStamp;
+                    setTimeout(() => scrollToSection(syncOptions.sectionId), 140);
+                }
+            } else {
+                const firstSecId = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null;
+                highlightActiveSection(firstSecId);
+                if (liveRole === 'master' && !isApplyingRemoteSync) {
+                    pushLiveState(true);
+                }
+            }
+
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    loadSongAnnotations(currentSong.id);
+                }, 60);
+            });
+        }
+
+        function editCurrentSong() { if (currentSong) openEditModal(currentSong.id); }
+
+        function startEventPlaylist(eventId) {
+            const ev = userEvents[eventId];
+            if (!ev || !ev.songIds || ev.songIds.length === 0) {
+                alert("Este evento no tiene canciones asignadas.");
+                return;
+            }
+            activeEventPlaylist = ev.songIds;
+            activeEventIndex = 0;
+            openSongReader(activeEventPlaylist[activeEventIndex]);
+        }
+
+        function nextEventSong() {
+            if (!activeEventPlaylist) return;
+            if (activeEventIndex < activeEventPlaylist.length - 1) {
+                activeEventIndex++;
+                openSongReader(activeEventPlaylist[activeEventIndex]);
+            } else { alert("¡Has llegado al final del evento!"); }
+        }
+
+        function prevEventSong() {
+            if (!activeEventPlaylist) return;
+            if (activeEventIndex > 0) {
+                activeEventIndex--;
+                openSongReader(activeEventPlaylist[activeEventIndex]);
+            }
+        }
+
+        function renderStructureBar() {
+            const bar = document.getElementById('structureBar');
+            bar.innerHTML = '';
+            if (!currentSong.sections) return;
+
+            currentSong.sections.forEach(sec => {
+                const badgeBtn = document.createElement('button');
+                badgeBtn.onclick = () => triggerSectionNavigation(sec.id);
+                const colorClasses = getBadgeClasses(sec.type);
+                badgeBtn.className = `flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition transform active:scale-95 whitespace-nowrap shadow-sm ${colorClasses}`;
+                badgeBtn.innerHTML = `<span>${sec.code}</span>${sec.count ? `<span class="opacity-75 text-[10px] bg-black/20 px-1 rounded">× ${sec.count}</span>` : ''}`;
+                bar.appendChild(badgeBtn);
+            });
+        }
+
+        function formatLineToHtml(lineText, isPrint = false) {
+            let regex = /\{(.*?)\}/g;
+            let html = '';
+            let lastIndex = 0;
+            let match;
+
+            const chordStyle = isPrint ? 'color: #000000 !important; font-weight: 900;' : '';
+            const lyricStyle = isPrint ? 'color: #1e293b !important;' : '';
+
+            while ((match = regex.exec(lineText)) !== null) {
+                if (match.index > lastIndex) {
+                    html += `<span class="lyric-item" style="${lyricStyle}">${lineText.substring(lastIndex, match.index)}</span>`;
+                }
+                html += `<span class="chord-item" style="${chordStyle}">${match[1].trim()}</span>`;
+                lastIndex = regex.lastIndex;
+            }
+
+            if (lastIndex < lineText.length) {
+                html += `<span class="lyric-item" style="${lyricStyle}">${lineText.substring(lastIndex)}</span>`;
+            }
+            return html;
+        }
+
+        function renderChart() {
+            const container = document.getElementById('chartContainer');
+            container.innerHTML = '';
+            if (!currentSong.sections) return;
+
+            const netTranspose = currentTranspose - currentCapo;
+
+            currentSong.sections.forEach(sec => {
+                const card = document.createElement('div');
+                card.id = sec.id;
+                const activeClass = activeLiveSectionId === sec.id ? 'section-active-live' : '';
+                card.className = `section-card ${activeClass} bg-stage-card border border-stage-cardBorder rounded-2xl p-4 md:p-5 shadow-sm scroll-mt-20 transition-all`;
+                card.onclick = () => {
+                    if (liveRole === 'master') {
+                        highlightActiveSection(sec.id);
+                        pushLiveState(true);
+                    }
+                };
+
+                const badgeColor = getBadgeClasses(sec.type);
+                const headerHtml = `
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${badgeColor} mb-3 shadow-sm">
+                        <span>${sec.code}</span>
+                        <span class="font-medium opacity-90">${sec.label}</span>
+                        ${sec.count ? `<span class="opacity-80 text-[11px] ml-0.5 bg-black/15 px-1 rounded">× ${sec.count}</span>` : ''}
+                    </div>
+                `;
+
+                let contentHtml = '<div class="space-y-1">';
+                sec.lines.forEach(lineText => {
+                    const transposedLine = transposeChordLine(lineText, netTranspose);
+                    const formattedHtml = formatLineToHtml(transposedLine, false);
+                    contentHtml += `<div class="chord-lyric-block">${formattedHtml}</div>`;
+                });
+                contentHtml += '</div>';
+
+                card.innerHTML = headerHtml + contentHtml;
+                container.appendChild(card);
+            });
+        }
+
+        function openPrintPreview() {
+            if (!currentSong) return;
+            const sheet = document.getElementById('printSheetContainer');
+            sheet.innerHTML = '';
+            const netTranspose = currentTranspose - currentCapo;
+            const onlyLyrics = document.getElementById('onlyLyricsToggle').checked;
+
+            let html = `
+                <div class="border-b border-zinc-200 pb-3 mb-4 flex justify-between items-end">
+                    <div>
+                        <h2 class="text-2xl font-black text-black">${currentSong.title}</h2>
+                        <p class="text-xs font-bold text-zinc-600 uppercase tracking-wider">${currentSong.artist}</p>
+                    </div>
+                    <div class="text-[11px] font-bold text-zinc-700 bg-zinc-100 px-3 py-1 rounded-xl border border-zinc-200">
+                        Tono: ${currentSong.originalKey} | Capo: ${currentCapo} | ${currentSong.bpm || '--'} BPM
+                    </div>
+                </div>
+                <div class="space-y-4">
+            `;
+
+            currentSong.sections.forEach(sec => {
+                html += `
+                    <div class="bg-white border border-zinc-200 rounded-xl p-3.5 shadow-sm">
+                        <div class="text-[10px] font-black text-black uppercase bg-zinc-100 px-2.5 py-1 rounded-lg inline-block mb-2 border border-zinc-200">
+                            ${sec.code} - ${sec.label}
+                        </div>
+                        <div class="space-y-1">
+                `;
+                sec.lines.forEach(lineText => {
+                    const transposedLine = transposeChordLine(lineText, netTranspose);
+                    const formattedHtml = formatLineToHtml(transposedLine, true);
+                    if (!onlyLyrics || !transposedLine.includes('{')) {
+                        html += `<div class="chord-lyric-block text-sm" style="white-space: pre-wrap;">${formattedHtml}</div>`;
+                    }
+                });
+                html += `</div></div>`;
+            });
+            html += `</div>`;
+            sheet.innerHTML = html;
+            document.getElementById('printPreviewModal').classList.remove('hidden');
+        }
+
+        function closePrintPreview() { document.getElementById('printPreviewModal').classList.add('hidden'); }
+
+        function downloadPDF() {
+            if (!currentSong) return;
+            const element = document.getElementById('printSheetContainer');
+            html2pdf().set({ margin: [10, 10, 10, 10], filename: `${currentSong.title}.pdf`, html2canvas: { scale: 2 } }).from(element).save();
+        }
+
+        function downloadImage2D() {
+            if (!currentSong) return;
+            const netTranspose = currentTranspose - currentCapo;
+            const onlyLyrics = document.getElementById('onlyLyricsToggle').checked;
+            const canvas = document.createElement('canvas');
+            canvas.width = 1200; canvas.height = 1600;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#0F172A'; ctx.font = 'bold 38px monospace'; ctx.fillText(currentSong.title, 80, 110);
+            ctx.fillStyle = '#64748B'; ctx.font = 'bold 22px monospace'; ctx.fillText(currentSong.artist, 80, 145);
+            let cursorY = 220;
+
+            currentSong.sections.forEach(sec => {
+                ctx.fillStyle = '#0F172A'; ctx.font = 'bold 18px monospace';
+                ctx.fillText(`${sec.code} - ${sec.label}`, 95, cursorY);
+                cursorY += 40;
+                sec.lines.forEach(lineText => {
+                    const transposedLine = transposeChordLine(lineText, netTranspose);
+                    if (!onlyLyrics || !transposedLine.includes('{')) {
+                        ctx.fillText(transposedLine.replace(/\{(.*?)\}/g, '$1'), 95, cursorY);
+                        cursorY += 30;
+                    }
+                });
+                cursorY += 20;
+            });
+
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = `${currentSong.title}.png`;
+            a.click();
+        }
+
+        function getCalculatedKey(origKeyStr, transposeSteps) {
+            if (!origKeyStr) return "C";
+            let cleanRoot = origKeyStr.trim().split('/')[0].replace(/m|maj|min|aug|dim|sus\d*|\d*/g, '');
+            let normalized = flatToSharp[cleanRoot] || cleanRoot;
+            let idx = chromaticScale.indexOf(normalized);
+            if (idx === -1) idx = 0;
+            let newIdx = (idx + transposeSteps) % 12;
+            if (newIdx < 0) newIdx += 12;
+            return chromaticScale[newIdx] + origKeyStr.trim().substring(cleanRoot.length);
+        }
+
+        function updateCurrentKeyDisplay() {
+            if (!currentSong) return;
+            const badge = document.getElementById('currentKeyBadge');
+            badge.innerText = getCalculatedKey(currentSong.originalKey, currentTranspose);
+            badge.className = currentTranspose !== 0 ? "font-mono font-bold text-amber-400" : "font-mono font-bold text-indigo-400";
+        }
+
+        function toggleKeyMenu(e) {
+            e.stopPropagation();
+            document.getElementById('keyMenu').classList.toggle('hidden');
+            document.getElementById('capoMenu').classList.add('hidden');
+            document.getElementById('scrollMenu').classList.add('hidden');
+            document.getElementById('syncMenu').classList.add('hidden');
+        }
+
+        function toggleCapoMenu(e) {
+            e.stopPropagation();
+            document.getElementById('capoMenu').classList.toggle('hidden');
+            document.getElementById('keyMenu').classList.add('hidden');
+            document.getElementById('scrollMenu').classList.add('hidden');
+            document.getElementById('syncMenu').classList.add('hidden');
+        }
+
+        function toggleScrollMenu(e) {
+            e.stopPropagation();
+            document.getElementById('scrollMenu').classList.toggle('hidden');
+            document.getElementById('keyMenu').classList.add('hidden');
+            document.getElementById('capoMenu').classList.add('hidden');
+            document.getElementById('syncMenu').classList.add('hidden');
+        }
+
+        function setCapoValue(val) {
+            currentCapo = val;
+            document.getElementById('currentCapoBadge').innerText = val;
+            document.getElementById('capoMenu').classList.add('hidden');
+            renderChart();
+        }
+
+        function renderKeyMenuGrid() {
+            if (!currentSong) return;
+            const grid = document.getElementById('keyNotesGrid');
+            grid.innerHTML = '';
+            document.getElementById('origKeyInfo').innerText = `Orig: ${currentSong.originalKey}`;
+
+            let origCleanRoot = currentSong.originalKey.trim().split('/')[0].replace(/m|maj|min|aug|dim|sus\d*|\d*/g, '');
+            let origIndex = chromaticScale.indexOf(flatToSharp[origCleanRoot] || origCleanRoot);
+            if (origIndex === -1) origIndex = 0;
+
+            chromaticScale.forEach((note, index) => {
+                const btn = document.createElement('button');
+                const steps = index - origIndex;
+                const isSelected = (currentTranspose % 12 + 12) % 12 === (steps % 12 + 12) % 12;
+                btn.className = `py-1.5 text-xs font-mono font-bold rounded-lg border transition ${isSelected ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm' : 'bg-zinc-900/90 text-zinc-300 hover:text-white hover:bg-zinc-800 border-zinc-800'}`;
+                btn.innerText = note;
+                btn.onclick = () => selectKeyByNoteSteps(steps);
+                grid.appendChild(btn);
+            });
+        }
+
+        function selectKeyByNoteSteps(steps) {
+            currentTranspose = steps;
+            updateCurrentKeyDisplay();
+            renderKeyMenuGrid();
+            renderChart();
+            document.getElementById('keyMenu').classList.add('hidden');
+        }
+
+        function resetKeyToOriginal() {
+            currentTranspose = 0;
+            updateCurrentKeyDisplay();
+            renderKeyMenuGrid();
+            renderChart();
+            document.getElementById('keyMenu').classList.add('hidden');
+        }
+
+        window.addEventListener('click', () => {
+            document.getElementById('keyMenu').classList.add('hidden');
+            document.getElementById('capoMenu').classList.add('hidden');
+            document.getElementById('scrollMenu').classList.add('hidden');
+            document.getElementById('syncMenu').classList.add('hidden');
+        });
+
+        document.getElementById('keyMenu').addEventListener('click', (e) => e.stopPropagation());
+        document.getElementById('capoMenu').addEventListener('click', (e) => e.stopPropagation());
+        document.getElementById('scrollMenu').addEventListener('click', (e) => e.stopPropagation());
+        document.getElementById('syncMenu').addEventListener('click', (e) => e.stopPropagation());
+
+        function triggerSectionNavigation(id) {
+            highlightActiveSection(id);
+            scrollToSection(id);
+            if (liveRole === 'master' && !isApplyingRemoteSync) {
+                pushLiveState(true);
+            }
+        }
+
+        function scrollToSection(id) {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // --- FUNCIONES DE EDICIÓN Y CREACIÓN DE CANCIONES ---
+        function handleSectionSelect(selectElement) {
+            const value = selectElement.value;
+            if (!value) return;
+
+            const textarea = document.getElementById('newContent');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+            let tagText = `[${value}]\n`;
+
+            textarea.value = text.substring(0, start) + tagText + text.substring(end);
+            textarea.focus();
+            textarea.selectionStart = textarea.selectionEnd = start + tagText.length;
+
+            selectElement.selectedIndex = 0;
+        }
+
+        function insertChordToken(chord) {
+            const textarea = document.getElementById('newContent');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+
+            let insertion = (chord === '{}') ? "{}" : `{${chord}}`;
+            textarea.value = text.substring(0, start) + insertion + text.substring(end);
+            textarea.focus();
+
+            if (chord === '{}') {
+                textarea.selectionStart = textarea.selectionEnd = start + 1;
+            } else {
+                textarea.selectionStart = textarea.selectionEnd = start + insertion.length;
+            }
+        }
+
+        function autoFormatChordPro() {
+            const textarea = document.getElementById('newContent');
+            if (!textarea) return;
+
+            const raw = textarea.value;
+            if (!raw.trim()) {
+                alert("Primero pega la letra y los acordes en el cuadro de texto.");
+                return;
+            }
+
+            const lines = raw.split('\n');
+            const formattedLines = [];
+
+            const singleChordPattern = '[A-G][b#]?(?:m|maj|min|aug|dim|sus\\d*|add\\d*|\\d+)*(?:\\/[A-G][b#]?)?';
+            const chordLineRegex = new RegExp(`^\\s*(${singleChordPattern}\\s*)+$`);
+            const globalChordRegex = new RegExp(`(${singleChordPattern})`, 'g');
+            const wordChordRegex = new RegExp(`\\b(${singleChordPattern})\\b`, 'g');
+
+            for (let i = 0; i < lines.length; i++) {
+                const originalLine = lines[i];
+                const trimmedLine = originalLine.trim();
+
+                if (!trimmedLine) {
+                    formattedLines.push('');
+                    continue;
+                }
+
+                const lowerLine = trimmedLine.toLowerCase().replace(/:$/, '');
+                if (lowerLine.includes('pre-coro') || lowerLine.includes('precoro') || lowerLine.includes('pre chorus')) {
+                    formattedLines.push('[PC]');
+                    continue;
+                } else if (lowerLine.includes('verso') || lowerLine.includes('verse')) {
+                    const num = trimmedLine.match(/\d+/) || ['1'];
+                    formattedLines.push(`[V${num[0]}]`);
+                    continue;
+                } else if (lowerLine.includes('coro') || lowerLine.includes('chorus')) {
+                    const num = trimmedLine.match(/\d+/) || [''];
+                    formattedLines.push(`[C${num[0]}]`);
+                    continue;
+                } else if (lowerLine.includes('puente') || lowerLine.includes('bridge')) {
+                    formattedLines.push('[B]');
+                    continue;
+                } else if (lowerLine.includes('intro')) {
+                    formattedLines.push('[IN]');
+                    continue;
+                } else if (lowerLine.includes('outro') || lowerLine.includes('final')) {
+                    formattedLines.push('[O]');
+                    continue;
+                } else if (trimmedLine.startsWith('[') && trimmedLine.endsWith(']')) {
+                    formattedLines.push(trimmedLine);
+                    continue;
+                }
+
+                if (chordLineRegex.test(originalLine) && i + 1 < lines.length) {
+                    const processedChordLine = originalLine.replace(globalChordRegex, '{$1}');
+                    formattedLines.push(processedChordLine);
+                    formattedLines.push(lines[i + 1]);
+                    i++;
+                } else {
+                    const cleaned = originalLine.replace(wordChordRegex, (match) => {
+                        if ((match === 'A' || match === 'E') && /[a-z]{2,}/.test(trimmedLine)) {
+                            return match;
+                        }
+                        if (match.length <= 6) return `{${match}}`;
+                        return match;
+                    });
+                    formattedLines.push(cleaned);
+                }
+            }
+
+            textarea.value = formattedLines.join('\n');
+        }
+
+        function isChordOnlyLine(lineText) {
+            const cleaned = lineText.replace(/\{[^}]*\}/g, '').trim();
+            return cleaned === '';
+        }
+
+        function renderSectionLines(lines) {
+            let html = '';
+            lines.forEach(lineText => {
+                const hasBraces = /\{[^}]*\}/.test(lineText);
+                if (!hasBraces || isChordOnlyLine(lineText)) {
+                    html += `<div class="editor-mono-block">${formatMonospaceLine(lineText)}</div>`;
+                } else {
+                    html += `<div class="chord-inline-line">${formatInlineChordLyric(lineText)}</div>`;
+                }
+            });
+            return html;
+        }
+
+        function formatMonospaceLine(lineText) {
+            let escaped = escapeHtml(lineText);
+            return escaped.replace(/\{([^}]*)\}/g, '<span class="chord-inline">$1</span>');
+        }
+
+        function formatInlineChordLyric(lineText) {
+            let html = '';
+            let cursor = 0;
+            let match;
+
+            const firstBraceIdx = lineText.indexOf('{');
+            if (firstBraceIdx > 0) {
+                const prefix = escapeHtml(lineText.slice(0, firstBraceIdx));
+                html += `<span class="chord-stack"><span class="chord-inline">&nbsp;</span><span class="lyric-inline">${prefix}</span></span>`;
+                cursor = firstBraceIdx;
+            }
+
+            const remaining = lineText.slice(cursor);
+            const segmentRegex = /\{([^}]*)\}([^{]*)/g;
+            while ((match = segmentRegex.exec(remaining)) !== null) {
+                const chord = escapeHtml(match[1]);
+                const lyric = escapeHtml(match[2]);
+
+                html += `
+                    <span class="chord-stack">
+                        <span class="chord-inline">${chord !== '' ? chord : '&nbsp;'}</span>
+                        <span class="lyric-inline">${lyric !== '' ? lyric : '&nbsp;'}</span>
+                    </span>
+                `;
+            }
+
+            return html;
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;")
+                .replace(/ /g, "&nbsp;");
+        }
+
+        function openPreviewModal() {
+            const title = document.getElementById('newTitle').value.trim() || 'Sin Título';
+            const artist = document.getElementById('newArtist').value.trim() || 'Sin Artista';
+            const key = document.getElementById('newKey').value.trim() || 'C';
+            const bpm = document.getElementById('newBpm').value.trim() || '--';
+            const content = document.getElementById('newContent').value;
+            const sections = parseChordProInput(content);
+
+            const container = document.getElementById('previewContentContainer');
+            let html = `
+                <div class="border-b border-zinc-800 pb-3 mb-4">
+                    <h2 class="text-xl font-black text-white">${title}</h2>
+                    <p class="text-xs font-bold text-zinc-400 uppercase tracking-wider">${artist} • Tono: ${key} • ${bpm} BPM</p>
+                </div>
+                <div class="space-y-4">
+            `;
+
+            sections.forEach(sec => {
+                const badgeColor = getBadgeClasses(sec.type);
+                html += `
+                    <div class="bg-stage-card border border-stage-cardBorder rounded-xl p-4">
+                        <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-bold ${badgeColor} mb-2.5">
+                            <span>${sec.code}</span>
+                            <span class="font-medium">${sec.label}</span>
+                        </div>
+                        <div class="space-y-1">
+                `;
+                html += renderSectionLines(sec.lines);
+                html += `</div></div>`;
+            });
+
+            html += `</div>`;
+            container.innerHTML = html;
+            document.getElementById('previewModal').classList.remove('hidden');
+        }
+
+        function closePreviewModal() {
+            document.getElementById('previewModal').classList.add('hidden');
+        }
+
+        function openCreateModal() {
+            document.getElementById('modalTitle').innerText = "Nueva Canción";
+            document.getElementById('editSongId').value = "";
+            document.getElementById('isCustomEdit').value = "false";
+            document.getElementById('newTitle').value = "";
+            document.getElementById('newArtist').value = "";
+            document.getElementById('newKey').value = "";
+            document.getElementById('newBpm').value = "";
+            document.getElementById('newTimeSig').value = "4/4";
+            document.getElementById('newContent').value = "";
+            const saveBtn = document.getElementById('saveBtn');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Guardar Cambios"; }
+            document.getElementById('createModal').classList.remove('hidden');
+        }
+
+        function openEditModal(songId) {
+            const song = getEffectiveSongs().find(s => s.id === songId);
+            if (!song) return;
+            document.getElementById('modalTitle').innerText = `Editando: ${song.title}`;
+            document.getElementById('editSongId').value = song.id;
+            document.getElementById('isCustomEdit').value = "true";
+            document.getElementById('newTitle').value = song.title;
+            document.getElementById('newArtist').value = song.artist;
+            document.getElementById('newKey').value = song.originalKey;
+            document.getElementById('newBpm').value = song.bpm || '';
+            document.getElementById('newTimeSig').value = song.timeSig || '4/4';
+
+            let rawContent = "";
+            if (song.sections && Array.isArray(song.sections)) {
+                song.sections.forEach(sec => {
+                    rawContent += `[${sec.code}${sec.count ? ' x' + sec.count : ''}]\n`;
+                    sec.lines.forEach(line => { rawContent += line + "\n"; });
+                    rawContent += "\n";
+                });
+            }
+            document.getElementById('newContent').value = rawContent.trim();
+            const saveBtn = document.getElementById('saveBtn');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Guardar Cambios"; }
+            document.getElementById('createModal').classList.remove('hidden');
+        }
+
+        function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
+
+        function openEventModal(eventId = null) {
+            document.getElementById('editEventId').value = eventId || "";
+            const nameInput = document.getElementById('eventName');
+            const dateInput = document.getElementById('eventDate');
+            const notesInput = document.getElementById('eventNotes');
+            let selectedSongIds = [];
+
+            if (eventId && userEvents[eventId]) {
+                const ev = userEvents[eventId];
+                document.getElementById('eventModalTitle').innerText = "Editar Evento";
+                nameInput.value = ev.name || "";
+                dateInput.value = ev.date || "";
+                notesInput.value = ev.notes || "";
+                selectedSongIds = ev.songIds || [];
+            } else {
+                document.getElementById('eventModalTitle').innerText = "Nuevo Evento";
+                nameInput.value = ""; dateInput.value = ""; notesInput.value = "";
+            }
+
+            const selector = document.getElementById('eventSongsSelector');
+            selector.innerHTML = '';
+            getEffectiveSongs().forEach(song => {
+                const isChecked = selectedSongIds.includes(song.id) ? 'checked' : '';
+                selector.innerHTML += `
+                    <label class="flex items-center gap-2 cursor-pointer hover:bg-zinc-800/50 p-1.5 rounded-lg transition">
+                        <input type="checkbox" value="${song.id}" ${isChecked} class="event-song-checkbox rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0">
+                        <span class="text-white font-medium">${song.title}</span>
+                    </label>
+                `;
+            });
+            document.getElementById('eventModal').classList.remove('hidden');
+        }
+
+        function closeEventModal() { document.getElementById('eventModal').classList.add('hidden'); }
+
+        async function saveEventData() {
+            const editId = document.getElementById('editEventId').value;
+            const name = document.getElementById('eventName').value.trim();
+            const date = document.getElementById('eventDate').value.trim();
+            const notes = document.getElementById('eventNotes').value.trim();
+            if (!name) { alert("Ingresa un nombre"); return; }
+            const songIds = Array.from(document.querySelectorAll('.event-song-checkbox:checked')).map(cb => cb.value);
+
+            try {
+                const data = { name, date, notes, songIds };
+                if (editId) await db.collection("users").doc(currentUser.uid).collection("events").doc(editId).set(data);
+                else await db.collection("users").doc(currentUser.uid).collection("events").add(data);
+                closeEventModal();
+            } catch (e) { alert("Error: " + e.message); }
+        }
+
+        async function deleteEventAction(eventId) {
+            if (confirm("¿Eliminar evento?")) await db.collection("users").doc(currentUser.uid).collection("events").doc(eventId).delete();
+        }
+
+        async function deleteSongAction(songId, isCustomized) {
+            if (isCustomized) {
+                if (confirm("¿Eliminar versión personal?")) await db.collection("users").doc(currentUser.uid).collection("custom_songs").doc(songId).delete();
+            } else {
+                if (confirm("¿Eliminar canción global?")) await db.collection("songs").doc(songId).delete();
+            }
+        }
+
+        function parseChordProInput(rawText) {
+            const lines = rawText.split('\n');
+            const sections = [];
+            let currentSec = { id: "sec-1", code: "V1", label: "Verso 1", type: "verse", count: null, lines: [] };
+
+            lines.forEach((line, idx) => {
+                const trimmed = line.trim();
+                const match = trimmed.match(/^\[(.*?)\]/);
+                if (match && !trimmed.includes(' ')) {
+                    if (currentSec.lines.length > 0) sections.push(currentSec);
+                    const parsed = parseSectionTag(match[1]);
+                    currentSec = { id: `sec-${Date.now()}-${idx}`, ...parsed, lines: [] };
+                    return;
+                }
+                if (trimmed !== "") currentSec.lines.push(line);
+            });
+            if (currentSec.lines.length > 0) sections.push(currentSec);
+            return sections;
+        }
+
+        async function saveSongData() {
+            const editId = document.getElementById('editSongId').value;
+            const isCustomEdit = document.getElementById('isCustomEdit').value === "true";
+            const title = document.getElementById('newTitle').value.trim();
+            const artist = document.getElementById('newArtist').value.trim();
+            const key = document.getElementById('newKey').value.trim();
+            const bpm = parseInt(document.getElementById('newBpm').value) || 70;
+            const timeSig = document.getElementById('newTimeSig').value.trim() || '4/4';
+            const content = document.getElementById('newContent').value;
+
+            if (!title || !artist) { alert("Título y Artista requeridos"); return; }
+
+            const saveBtn = document.getElementById('saveBtn');
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = "Guardando..."; }
+
+            const songData = { title, artist, originalKey: key || 'C', bpm, timeSig, sections: parseChordProInput(content) };
+
+            try {
+                if (editId && isCustomEdit) await db.collection("users").doc(currentUser.uid).collection("custom_songs").doc(editId).set(songData);
+                else if (editId) await db.collection("songs").doc(editId).update(songData);
+                else await db.collection("songs").add(songData);
+                closeCreateModal();
+                if (currentSong && currentSong.id === editId) openSongReader(editId);
+            } catch (e) {
+                alert("Error: " + e.message);
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = "Guardar Cambios"; }
+            }
+        }
+
+        // --- SCROLL AUTOMÁTICO ---
+        let autoScrollInterval = null;
+        let isScrolling = false;
+        let currentScrollSpeed = 2;
+
+        function changeScrollSpeed(val) {
+            currentScrollSpeed = parseInt(val);
+            if (isScrolling) {
+                clearInterval(autoScrollInterval);
+                startScrollInterval();
+            }
+        }
+
+        function startScrollInterval() {
+            if (currentScrollSpeed === 0) return;
+            const intervalTime = Math.max(15, 100 - (currentScrollSpeed * 15));
+            autoScrollInterval = setInterval(() => {
+                window.scrollBy(0, 1);
+                if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 5) {
+                    toggleAutoScroll();
+                }
+            }, intervalTime);
+        }
+
+        function toggleAutoScroll() {
+            const playBtn = document.getElementById('scrollPlayBtn');
+            const playIcon = document.getElementById('scrollPlayIcon');
+
+            if (isScrolling) {
+                clearInterval(autoScrollInterval);
+                isScrolling = false;
+                playIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>`;
+                playBtn.className = "flex items-center justify-center p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm";
+            } else {
+                if (currentScrollSpeed === 0) {
+                    currentScrollSpeed = 2;
+                    document.getElementById('scrollSpeedSelect').value = "2";
+                }
+                isScrolling = true;
+                playIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>`;
+                playBtn.className = "flex items-center justify-center p-2 rounded-xl bg-red-600 hover:bg-red-500 text-white transition shadow-sm";
+                startScrollInterval();
+            }
+        }
+
+        // --- LÓGICA DE DIBUJO Y ANOTACIONES PERSISTENTES POR USUARIO Y CANCIÓN ---
+        const container = document.getElementById('readerMainContainer');
+        const canvas = document.getElementById('annotationCanvas');
+        const ctx = canvas.getContext('2d');
+        const mainBufferCanvas = document.createElement('canvas');
+        const mainBufferCtx = mainBufferCanvas.getContext('2d');
+        const currentStrokeCanvas = document.createElement('canvas');
+        const currentStrokeCtx = currentStrokeCanvas.getContext('2d');
+
+        const btnToggleToolbar = document.getElementById('btnToggleToolbar');
+        const floatingToolbar = document.getElementById('floatingToolbar');
+        const modeStatus = document.getElementById('modeStatus');
+        const toolPen = document.getElementById('toolPen');
+        const toolHighlighter = document.getElementById('toolHighlighter');
+        const toolText = document.getElementById('toolText');
+        const toolEraser = document.getElementById('toolEraser');
+        const btnColorPicker = document.getElementById('btnColorPicker');
+        const btnSizeDisplay = document.getElementById('btnSizeDisplay');
+        const sizeLabel = document.getElementById('sizeLabel');
+        const configMenu = document.getElementById('configMenu');
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sliderVal = document.getElementById('sliderVal');
+        const sliderTitle = document.getElementById('sliderTitle');
+        const btnClearAll = document.getElementById('btnClearAll');
+
+        let activeTool = null;
+        let isDrawing = false;
+        let currentColor = '#facc15';
+        let penSize = 3;
+        let highlighterSize = 18;
+        let fontSize = 18;
+        let strokePoints = [];
+        let saveTimeout = null;
+        let hasUnsavedChanges = false;
+
+        async function loadSongAnnotations(songId) {
+            if (!currentUser || !songId) return;
+            try {
+                resizeCanvas(false);
+                const docRef = db.collection("users").doc(currentUser.uid).collection("annotations").doc(songId);
+                const doc = await docRef.get();
+
+                mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+                document.querySelectorAll('.user-text-input').forEach(el => el.remove());
+
+                if (doc.exists && doc.data().imageData) {
+                    const img = new Image();
+                    img.onload = () => {
+                        if (!currentSong || currentSong.id !== songId) return;
+                        resizeCanvas(false);
+                        mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+                        mainBufferCtx.drawImage(img, 0, 0);
+                        renderCanvas();
+                    };
+                    img.src = doc.data().imageData;
+                } else {
+                    renderCanvas();
+                }
+            } catch (e) {
+                console.error("Error al cargar anotaciones:", e);
+            }
+        }
+
+        async function saveSongAnnotations(immediate = false) {
+            if (!currentUser || !currentSong) return;
+            const targetSongId = currentSong.id;
+            hasUnsavedChanges = true;
+
+            const executeSave = async () => {
+                if (!hasUnsavedChanges) return;
+                try {
+                    let imageData = mainBufferCanvas.toDataURL("image/png");
+                    if (imageData.length > 900000) {
+                        imageData = mainBufferCanvas.toDataURL("image/webp", 0.85);
+                    }
+
+                    await db.collection("users").doc(currentUser.uid).collection("annotations").doc(targetSongId).set({
+                        imageData: imageData,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    hasUnsavedChanges = false;
+                } catch (e) {
+                    console.error("Error al guardar anotaciones:", e);
+                }
+            };
+
+            clearTimeout(saveTimeout);
+            if (immediate) {
+                await executeSave();
+            } else {
+                saveTimeout = setTimeout(executeSave, 300);
+            }
+        }
+
+        function resizeCanvas(preserveContent = true) {
+            if (!container) return;
+            const w = container.offsetWidth;
+            const h = container.offsetHeight;
+            if (w === 0 || h === 0) return;
+
+            let tempSaved = null;
+            if (preserveContent && mainBufferCanvas.width > 0 && mainBufferCanvas.height > 0) {
+                tempSaved = document.createElement('canvas');
+                tempSaved.width = mainBufferCanvas.width;
+                tempSaved.height = mainBufferCanvas.height;
+                tempSaved.getContext('2d').drawImage(mainBufferCanvas, 0, 0);
+            }
+
+            canvas.width = w;
+            canvas.height = h;
+            mainBufferCanvas.width = w;
+            mainBufferCanvas.height = h;
+            currentStrokeCanvas.width = w;
+            currentStrokeCanvas.height = h;
+
+            if (tempSaved) {
+                mainBufferCtx.drawImage(tempSaved, 0, 0);
+            }
+            renderCanvas();
+        }
+        window.addEventListener('resize', () => resizeCanvas(true));
+
+        function renderCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(mainBufferCanvas, 0, 0);
+        }
+
+        btnToggleToolbar.addEventListener('click', () => {
+            floatingToolbar.classList.toggle('hidden');
+            if (floatingToolbar.classList.contains('hidden')) {
+                configMenu.classList.add('hidden');
+                setTool(null);
+            } else {
+                resizeCanvas(true);
+                if (!activeTool) setTool('pen');
+            }
+        });
+
+        function setTool(tool) {
+            activeTool = (activeTool === tool) ? null : tool;
+            [toolPen, toolHighlighter, toolText, toolEraser].forEach(b => {
+                b.classList.remove('bg-indigo-500/20', 'text-indigo-400', 'border', 'border-indigo-500/40');
+                b.classList.add('text-gray-400', 'hover:text-white');
+            });
+
+            if (activeTool) {
+                const btnMap = { pen: toolPen, highlighter: toolHighlighter, text: toolText, eraser: toolEraser };
+                btnMap[activeTool].classList.add('bg-indigo-500/20', 'text-indigo-400', 'border', 'border-indigo-500/40');
+
+                if (activeTool === 'text') {
+                    canvas.classList.add('pointer-events-none');
+                    canvas.style.touchAction = 'auto';
+                } else {
+                    canvas.classList.remove('pointer-events-none');
+                    canvas.style.touchAction = 'none';
+                }
+
+                modeStatus.innerHTML = `ESTADO: <strong class="text-indigo-400 font-medium">${activeTool.toUpperCase()}</strong>`;
+
+                if (activeTool === 'text') {
+                    sliderTitle.innerText = 'Tamaño Texto';
+                    sizeSlider.min = 12; sizeSlider.max = 60;
+                    sizeSlider.value = fontSize;
+                    sizeLabel.innerText = `${fontSize}px`;
+                    sliderVal.innerText = `${fontSize} pt`;
+                } else if (activeTool === 'highlighter') {
+                    sliderTitle.innerText = 'Grosor Resaltador';
+                    sizeSlider.min = 10; sizeSlider.max = 50;
+                    sizeSlider.value = highlighterSize;
+                    sizeLabel.innerText = `${highlighterSize}px`;
+                    sliderVal.innerText = `${highlighterSize} pt`;
+                } else {
+                    sliderTitle.innerText = 'Grosor Trazo';
+                    sizeSlider.min = 1; sizeSlider.max = 40;
+                    sizeSlider.value = penSize;
+                    sizeLabel.innerText = `${penSize}px`;
+                    sliderVal.innerText = `${penSize} pt`;
+                }
+            } else {
+                canvas.classList.add('pointer-events-none');
+                canvas.style.touchAction = 'auto';
+                modeStatus.innerHTML = 'ESTADO: <strong class="text-emerald-400 font-medium">LECTURA</strong>';
+                configMenu.classList.add('hidden');
+            }
+        }
+
+        toolPen.addEventListener('click', () => setTool('pen'));
+        toolHighlighter.addEventListener('click', () => setTool('highlighter'));
+        toolText.addEventListener('click', () => setTool('text'));
+        toolEraser.addEventListener('click', () => setTool('eraser'));
+
+        btnColorPicker.addEventListener('click', (e) => { e.stopPropagation(); configMenu.classList.toggle('hidden'); });
+        btnSizeDisplay.addEventListener('click', (e) => { e.stopPropagation(); configMenu.classList.toggle('hidden'); });
+        window.addEventListener('click', () => configMenu.classList.add('hidden'));
+        configMenu.addEventListener('click', (e) => e.stopPropagation());
+
+        document.querySelectorAll('.color-option').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                currentColor = e.target.getAttribute('data-color');
+                btnColorPicker.style.backgroundColor = currentColor;
+                configMenu.classList.add('hidden');
+            });
+        });
+
+        sizeSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            if (activeTool === 'text') fontSize = val;
+            else if (activeTool === 'highlighter') highlighterSize = val;
+            else penSize = val;
+            sizeLabel.innerText = `${val}px`;
+            sliderVal.innerText = `${val} pt`;
+        });
+
+        btnClearAll.addEventListener('click', () => {
+            if (confirm('¿Limpiar anotaciones?')) {
+                mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+                renderCanvas();
+                document.querySelectorAll('.user-text-input').forEach(el => el.remove());
+                saveSongAnnotations(true);
+            }
+        });
+
+        container.addEventListener('click', (e) => {
+            if (activeTool !== 'text') return;
+            if (e.target.classList.contains('user-text-input')) return;
+
+            const rect = container.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = 'Escribe aquí...';
+            input.className = 'user-text-input absolute outline-none font-sans font-bold z-40';
+            input.style.left = `${x}px`;
+            input.style.top = `${y}px`;
+            input.style.color = currentColor;
+            input.style.fontSize = `${fontSize}px`;
+            container.appendChild(input);
+            setTimeout(() => input.focus(), 30);
+
+            const commitText = () => {
+                if (input.value.trim() !== '') {
+                    resizeCanvas(true);
+                    mainBufferCtx.save();
+                    mainBufferCtx.globalCompositeOperation = 'source-over';
+                    mainBufferCtx.globalAlpha = 1.0;
+                    mainBufferCtx.font = `bold ${fontSize}px sans-serif`;
+                    mainBufferCtx.fillStyle = currentColor;
+                    mainBufferCtx.textBaseline = 'top';
+                    mainBufferCtx.fillText(input.value, x, y);
+                    mainBufferCtx.restore();
+                    renderCanvas();
+                    saveSongAnnotations(true);
+                }
+                input.remove();
+            };
+
+            input.addEventListener('blur', commitText);
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') input.blur();
+                if (ev.key === 'Escape') { input.value = ''; input.blur(); }
+            });
+        });
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function startDrawing(e) {
+            if (!activeTool || activeTool === 'text') return;
+            if (canvas.width === 0 || canvas.height === 0) resizeCanvas(true);
+
+            isDrawing = true;
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+            const pos = getPos(e);
+            strokePoints = [pos];
+
+            if (activeTool !== 'highlighter') {
+                mainBufferCtx.beginPath();
+                mainBufferCtx.moveTo(pos.x, pos.y);
+                mainBufferCtx.lineTo(pos.x + 0.1, pos.y + 0.1);
+                mainBufferCtx.strokeStyle = currentColor;
+                mainBufferCtx.lineWidth = activeTool === 'eraser' ? penSize * 3 : penSize;
+                mainBufferCtx.lineCap = 'round';
+                mainBufferCtx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+                mainBufferCtx.stroke();
+                renderCanvas();
+            }
+        }
+
+        function draw(e) {
+            if (!isDrawing || !activeTool || activeTool === 'text') return;
+            const pos = getPos(e);
+            strokePoints.push(pos);
+
+            if (activeTool === 'eraser') {
+                mainBufferCtx.globalCompositeOperation = 'destination-out';
+                mainBufferCtx.lineWidth = penSize * 3;
+                mainBufferCtx.globalAlpha = 1.0;
+                mainBufferCtx.lineCap = 'round';
+                mainBufferCtx.lineJoin = 'round';
+                mainBufferCtx.lineTo(pos.x, pos.y);
+                mainBufferCtx.stroke();
+                renderCanvas();
+            } else if (activeTool === 'highlighter') {
+                currentStrokeCtx.clearRect(0, 0, currentStrokeCanvas.width, currentStrokeCanvas.height);
+                currentStrokeCtx.beginPath();
+                currentStrokeCtx.moveTo(strokePoints[0].x, strokePoints[0].y);
+                for (let i = 1; i < strokePoints.length; i++) currentStrokeCtx.lineTo(strokePoints[i].x, strokePoints[i].y);
+                currentStrokeCtx.strokeStyle = currentColor;
+                currentStrokeCtx.lineWidth = highlighterSize;
+                currentStrokeCtx.lineCap = 'round';
+                currentStrokeCtx.lineJoin = 'round';
+                currentStrokeCtx.stroke();
+
+                renderCanvas();
+                ctx.save();
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.globalAlpha = 0.35;
+                ctx.drawImage(currentStrokeCanvas, 0, 0);
+                ctx.restore();
+            } else {
+                mainBufferCtx.globalCompositeOperation = 'source-over';
+                mainBufferCtx.strokeStyle = currentColor;
+                mainBufferCtx.lineWidth = penSize;
+                mainBufferCtx.globalAlpha = 1.0;
+                mainBufferCtx.lineCap = 'round';
+                mainBufferCtx.lineJoin = 'round';
+                mainBufferCtx.lineTo(pos.x, pos.y);
+                mainBufferCtx.stroke();
+                renderCanvas();
+            }
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            if (e && e.pointerId) {
+                try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+            }
+
+            if (activeTool === 'highlighter') {
+                mainBufferCtx.save();
+                mainBufferCtx.globalCompositeOperation = 'source-over';
+                mainBufferCtx.globalAlpha = 0.35;
+                mainBufferCtx.drawImage(currentStrokeCanvas, 0, 0);
+                mainBufferCtx.restore();
+                currentStrokeCtx.clearRect(0, 0, currentStrokeCanvas.width, currentStrokeCanvas.height);
+                renderCanvas();
+            }
+
+            isDrawing = false;
+            strokePoints = [];
+            saveSongAnnotations(true);
+        }
+
+        canvas.addEventListener('pointerdown', startDrawing);
+        canvas.addEventListener('pointermove', draw);
+        canvas.addEventListener('pointerup', stopDrawing);
+        canvas.addEventListener('pointercancel', stopDrawing);
+    </script>
+</body>
+</html>
