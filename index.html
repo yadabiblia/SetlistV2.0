@@ -359,7 +359,7 @@
             </div>
         </header>
 
-        <main id="readerMainContainer" class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 space-y-4 chords-bold lyrics-normal size-lg relative select-none">
+        <main id="readerMainContainer" class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 pb-40 space-y-4 chords-bold lyrics-normal size-lg relative select-none">
             <div class="flex flex-wrap items-center justify-between gap-4 mb-2 px-1">
                 <div>
                     <h1 id="songTitle" class="text-2xl md:text-3xl font-black tracking-tight text-white">---</h1>
@@ -929,6 +929,19 @@
             }
         }
 
+        function scheduleSlaveSectionScroll(sectionId) {
+            if (!sectionId) return;
+            requestAnimationFrame(() => {
+                if (typeof resizeCanvas === 'function') {
+                    resizeCanvas(true);
+                }
+                scrollToSection(sectionId);
+                setTimeout(() => {
+                    scrollToSection(sectionId);
+                }, 140);
+            });
+        }
+
         function subscribeLiveRoom() {
             if (liveRoomUnsubscribe) {
                 liveRoomUnsubscribe();
@@ -967,13 +980,11 @@
                         }
                         if (data.activeSectionId && data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp) {
                             lastHandledScrollStamp = data.scrollStamp;
-                            requestAnimationFrame(() => {
-                                setTimeout(() => scrollToSection(data.activeSectionId), 80);
-                            });
+                            scheduleSlaveSectionScroll(data.activeSectionId);
                         }
                     }
                 } finally {
-                    setTimeout(() => { isApplyingRemoteSync = false; }, 120);
+                    setTimeout(() => { isApplyingRemoteSync = false; }, 160);
                 }
             });
         }
@@ -1782,11 +1793,11 @@
             if (syncOptions.fromRemote) {
                 const targetSec = syncOptions.sectionId || (currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null);
                 highlightActiveSection(targetSec);
-                if (targetSec && syncOptions.scrollStamp && syncOptions.scrollStamp !== lastHandledScrollStamp) {
+                if (syncOptions.scrollStamp) {
                     lastHandledScrollStamp = syncOptions.scrollStamp;
-                    requestAnimationFrame(() => {
-                        setTimeout(() => scrollToSection(targetSec), 180);
-                    });
+                }
+                if (targetSec) {
+                    scheduleSlaveSectionScroll(targetSec);
                 }
             } else {
                 const firstSecId = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null;
