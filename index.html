@@ -202,6 +202,7 @@
                 <div class="bg-stage-card border border-stage-cardBorder rounded-xl p-1 flex items-center gap-1 text-xs font-semibold">
                     <button id="tabSongsBtn" onclick="switchHomeTab('songs')" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition">Repertorio</button>
                     <button id="tabEventsBtn" onclick="switchHomeTab('events')" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Eventos</button>
+                    <button id="tabBandBtn" onclick="switchHomeTab('band')" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Banda</button>
                 </div>
                 <button id="primaryActionBtn" onclick="openCreateModal()" class="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 hover:bg-white text-xs font-bold text-zinc-900 transition shadow-sm active:scale-95">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
@@ -218,6 +219,7 @@
         </div>
         <div id="songListGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         <div id="eventListGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 hidden"></div>
+        <div id="bandPanel" class="hidden space-y-6"></div>
     </div>
 
     <!-- ==================== VISTA 2: ATRIL DIGITAL ==================== -->
@@ -229,9 +231,10 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                     </button>
 
-                    <div id="eventPlaylistNav" class="hidden items-center gap-2 bg-stage-card border border-stage-cardBorder px-3 py-1 rounded-xl text-xs">
+                    <div id="eventPlaylistNav" class="hidden items-center gap-1.5 bg-stage-card border border-stage-cardBorder px-2.5 py-1 rounded-xl text-xs">
                         <button onclick="prevEventSong()" class="p-1 hover:text-indigo-400 transition" title="Canción Anterior">◀</button>
-                        <span id="eventPlaylistInfo" class="font-mono text-zinc-300">1 / 1</span>
+                        <select id="eventSongQuickSelect" onchange="jumpToEventSong(this.value)" class="bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-lg px-2 py-0.5 font-mono text-[11px] max-w-[150px] sm:max-w-[200px] focus:outline-none focus:border-indigo-500 cursor-pointer"></select>
+                        <span id="eventPlaylistInfo" class="font-mono text-zinc-400 text-[11px] px-1">1 / 1</span>
                         <button onclick="nextEventSong()" class="p-1 hover:text-indigo-400 transition" title="Siguiente Canción">▶</button>
                     </div>
 
@@ -755,6 +758,10 @@
         let globalSongs = [];
         let userCustomSongs = {};
         let userEvents = {};
+        let bandData = null; // { code, name, leaderUid, members: { [uid]: { email, role: 'leader' | 'musician' } } }
+        let bandPublishedEvents = {}; // { [eventId]: eventData }
+        let bandUnsubscribe = null;
+        let bandEventsUnsubscribe = null;
         let currentSong = null;
         let currentTranspose = 0;
         let currentCapo = 0;
@@ -1024,6 +1031,16 @@
                     liveRoomUnsubscribe();
                     liveRoomUnsubscribe = null;
                 }
+                if (bandUnsubscribe) {
+                    bandUnsubscribe();
+                    bandUnsubscribe = null;
+                }
+                if (bandEventsUnsubscribe) {
+                    bandEventsUnsubscribe();
+                    bandEventsUnsubscribe = null;
+                }
+                bandData = null;
+                bandPublishedEvents = {};
                 document.getElementById('homeView').classList.add('hidden');
                 document.getElementById('readerView').classList.add('hidden');
                 document.getElementById('authView').classList.remove('hidden');
@@ -1073,6 +1090,291 @@
                 snapshot.forEach((doc) => { userEvents[doc.id] = { id: doc.id, ...doc.data() }; });
                 if (currentHomeTab === 'events') renderEventsView();
             });
+
+            loadUserBandSubscription();
+        }
+
+        function loadUserBandSubscription() {
+            if (!currentUser || !navigator.onLine) return;
+            db.collection("users").doc(currentUser.uid).get().then((doc) => {
+                const bandCode = doc.exists ? doc.data().bandCode : null;
+                if (bandCode) {
+                    subscribeToBand(bandCode);
+                } else {
+                    bandData = null;
+                    bandPublishedEvents = {};
+                    if (currentHomeTab === 'band') renderBandView();
+                    if (currentHomeTab === 'events') renderEventsView();
+                }
+            }).catch(() => {});
+        }
+
+        function subscribeToBand(code) {
+            const cleanCode = (code || '').trim().toUpperCase();
+            if (!cleanCode) return;
+
+            if (bandUnsubscribe) { bandUnsubscribe(); bandUnsubscribe = null; }
+            if (bandEventsUnsubscribe) { bandEventsUnsubscribe(); bandEventsUnsubscribe = null; }
+
+            bandUnsubscribe = db.collection("bands").doc(cleanCode).onSnapshot((doc) => {
+                if (!doc.exists) {
+                    bandData = null;
+                    bandPublishedEvents = {};
+                } else {
+                    bandData = { code: doc.id, ...doc.data() };
+                }
+                if (currentHomeTab === 'band') renderBandView();
+                if (currentHomeTab === 'events') renderEventsView();
+            });
+
+            bandEventsUnsubscribe = db.collection("bands").doc(cleanCode).collection("published_events").onSnapshot((snapshot) => {
+                bandPublishedEvents = {};
+                snapshot.forEach((doc) => {
+                    bandPublishedEvents[doc.id] = { id: doc.id, ...doc.data(), isBandPublished: true };
+                });
+                if (currentHomeTab === 'events') renderEventsView();
+                if (currentHomeTab === 'band') renderBandView();
+            });
+        }
+
+        function isCurrentUserBandLeader() {
+            if (!currentUser || !bandData) return false;
+            if (bandData.leaderUid === currentUser.uid) return true;
+            const member = bandData.members && bandData.members[currentUser.uid];
+            return member && member.role === 'leader';
+        }
+
+        async function createBandGroup() {
+            if (!currentUser) return;
+            const nameInput = document.getElementById('newBandName');
+            const codeInput = document.getElementById('newBandCode');
+            const name = (nameInput ? nameInput.value : '').trim();
+            let code = (codeInput ? codeInput.value : '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            if (!name) {
+                alert("Escribe un nombre para tu banda o grupo.");
+                return;
+            }
+            if (!code) {
+                code = 'B' + Math.random().toString(36).substring(2, 6).toUpperCase();
+            }
+
+            try {
+                const bandRef = db.collection("bands").doc(code);
+                const existing = await bandRef.get();
+                if (existing.exists && existing.data().leaderUid !== currentUser.uid) {
+                    alert("Ese código de banda ya está en uso. Prueba con otro.");
+                    return;
+                }
+
+                await bandRef.set({
+                    code,
+                    name,
+                    leaderUid: currentUser.uid,
+                    members: {
+                        [currentUser.uid]: {
+                            email: currentUser.email || 'Líder',
+                            role: 'leader'
+                        }
+                    },
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                await db.collection("users").doc(currentUser.uid).set({ bandCode: code }, { merge: true });
+                subscribeToBand(code);
+                alert(`Banda "${name}" creada con código: ${code}`);
+            } catch (e) {
+                alert("Error al crear banda: " + e.message);
+            }
+        }
+
+        async function joinBandGroup() {
+            if (!currentUser) return;
+            const codeInput = document.getElementById('joinBandCode');
+            const code = (codeInput ? codeInput.value : '').trim().toUpperCase();
+            if (!code) {
+                alert("Ingresa el código de la banda.");
+                return;
+            }
+
+            try {
+                const bandRef = db.collection("bands").doc(code);
+                const doc = await bandRef.get();
+                if (!doc.exists) {
+                    alert("No se encontró ninguna banda con ese código.");
+                    return;
+                }
+
+                await bandRef.set({
+                    members: {
+                        [currentUser.uid]: {
+                            email: currentUser.email || 'Músico',
+                            role: 'musician'
+                        }
+                    }
+                }, { merge: true });
+
+                await db.collection("users").doc(currentUser.uid).set({ bandCode: code }, { merge: true });
+                subscribeToBand(code);
+                alert(`Te uniste a la banda "${doc.data().name || code}".`);
+            } catch (e) {
+                alert("Error al unirte a la banda: " + e.message);
+            }
+        }
+
+        async function updateMemberRole(memberUid, newRole) {
+            if (!currentUser || !bandData || !isCurrentUserBandLeader()) return;
+            try {
+                await db.collection("bands").doc(bandData.code).set({
+                    members: {
+                        [memberUid]: { role: newRole }
+                    }
+                }, { merge: true });
+            } catch (e) {
+                alert("No se pudo actualizar el rol: " + e.message);
+            }
+        }
+
+        async function leaveBandGroup() {
+            if (!currentUser || !bandData) return;
+            if (!confirm("¿Salir de esta banda?")) return;
+            try {
+                await db.collection("bands").doc(bandData.code).update({
+                    [`members.${currentUser.uid}`]: firebase.firestore.FieldValue.delete()
+                });
+                await db.collection("users").doc(currentUser.uid).set({ bandCode: null }, { merge: true });
+                if (bandUnsubscribe) { bandUnsubscribe(); bandUnsubscribe = null; }
+                if (bandEventsUnsubscribe) { bandEventsUnsubscribe(); bandEventsUnsubscribe = null; }
+                bandData = null;
+                bandPublishedEvents = {};
+                renderBandView();
+                renderEventsView();
+            } catch (e) {
+                alert("Error al salir de la banda: " + e.message);
+            }
+        }
+
+        async function publishEventToBand(eventId) {
+            if (!currentUser) return;
+            if (!bandData) {
+                alert("Primero crea o únete a una banda en la pestaña Banda.");
+                return;
+            }
+            if (!isCurrentUserBandLeader()) {
+                alert("Solo el Líder de la banda puede publicar eventos al grupo.");
+                return;
+            }
+            const ev = userEvents[eventId];
+            if (!ev) return;
+
+            try {
+                await db.collection("bands").doc(bandData.code).collection("published_events").doc(eventId).set({
+                    name: ev.name,
+                    date: ev.date || '',
+                    notes: ev.notes || '',
+                    songIds: ev.songIds || [],
+                    publishedBy: currentUser.email || currentUser.uid,
+                    bandName: bandData.name || bandData.code,
+                    publishedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                alert(`Evento "${ev.name}" publicado para la banda "${bandData.name || bandData.code}".`);
+            } catch (e) {
+                alert("Error al publicar evento: " + e.message);
+            }
+        }
+
+        function renderBandView() {
+            const panel = document.getElementById('bandPanel');
+            if (!panel) return;
+
+            if (!bandData) {
+                panel.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl p-6 space-y-4">
+                            <div>
+                                <h3 class="text-base font-black text-white">Crear Banda (Rol: Líder)</h3>
+                                <p class="text-xs text-zinc-400 mt-1">Crea tu grupo y publica eventos para que todos ensayen.</p>
+                            </div>
+                            <div class="space-y-3 text-xs">
+                                <div>
+                                    <label class="text-zinc-400 font-semibold block mb-1">Nombre de la Banda</label>
+                                    <input type="text" id="newBandName" placeholder="Ej. Alabanza Principal" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500">
+                                </div>
+                                <div>
+                                    <label class="text-zinc-400 font-semibold block mb-1">Código de Banda (opcional)</label>
+                                    <input type="text" id="newBandCode" oninput="this.value = this.value.toUpperCase()" placeholder="Ej. BANDA2026" maxlength="12" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white font-mono uppercase focus:outline-none focus:border-indigo-500">
+                                </div>
+                            </div>
+                            <button onclick="createBandGroup()" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition shadow-sm">Crear Banda</button>
+                        </div>
+
+                        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl p-6 space-y-4">
+                            <div>
+                                <h3 class="text-base font-black text-white">Unirse a una Banda (Rol: Músico)</h3>
+                                <p class="text-xs text-zinc-400 mt-1">Ingresa el código que te comparta el líder de tu grupo.</p>
+                            </div>
+                            <div class="space-y-3 text-xs">
+                                <div>
+                                    <label class="text-zinc-400 font-semibold block mb-1">Código de Banda</label>
+                                    <input type="text" id="joinBandCode" oninput="this.value = this.value.toUpperCase()" placeholder="Ej. BANDA2026" maxlength="12" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-white font-mono uppercase focus:outline-none focus:border-indigo-500">
+                                </div>
+                            </div>
+                            <button onclick="joinBandGroup()" class="w-full py-2.5 rounded-xl bg-zinc-100 hover:bg-white text-xs font-bold text-zinc-900 transition shadow-sm">Unirme a la Banda</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const amLeader = isCurrentUserBandLeader();
+            const membersEntries = Object.entries(bandData.members || {});
+            const publishedList = Object.values(bandPublishedEvents);
+
+            let membersHtml = membersEntries.map(([uid, info]) => {
+                const roleLabel = info.role === 'leader' ? 'Líder' : 'Músico';
+                const badgeClass = info.role === 'leader'
+                    ? 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                    : 'bg-sky-950/80 text-sky-300 border-sky-800/60';
+
+                let roleControl = `<span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border ${badgeClass}">${roleLabel}</span>`;
+                if (amLeader && uid !== currentUser.uid) {
+                    roleControl = `
+                        <select onchange="updateMemberRole('${uid}', this.value)" class="bg-zinc-900 text-zinc-200 border border-zinc-700 rounded-lg px-2 py-1 text-[11px] font-mono">
+                            <option value="musician" ${info.role !== 'leader' ? 'selected' : ''}>Músico</option>
+                            <option value="leader" ${info.role === 'leader' ? 'selected' : ''}>Líder</option>
+                        </select>
+                    `;
+                }
+
+                return `
+                    <div class="flex items-center justify-between bg-zinc-900/70 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs">
+                        <span class="text-zinc-200 font-medium truncate pr-2">${info.email || uid}</span>
+                        ${roleControl}
+                    </div>
+                `;
+            }).join('');
+
+            panel.innerHTML = `
+                <div class="bg-stage-card border border-stage-cardBorder rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-xl font-black text-white">${bandData.name || bandData.code}</h3>
+                            <span class="text-xs font-mono font-bold bg-indigo-950 text-indigo-300 px-2.5 py-0.5 rounded-lg border border-indigo-800">Código: ${bandData.code}</span>
+                        </div>
+                        <p class="text-xs text-zinc-400 mt-1">Tu rol: <strong class="${amLeader ? 'text-amber-400' : 'text-sky-400'}">${amLeader ? 'Líder' : 'Músico'}</strong> • Eventos publicados: <strong class="text-white">${publishedList.length}</strong></p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="switchHomeTab('events')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition">Ver Eventos de la Banda</button>
+                        <button onclick="leaveBandGroup()" class="px-3.5 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-bold border border-red-900/40 transition">Salir</button>
+                    </div>
+                </div>
+
+                <div class="bg-stage-card border border-stage-cardBorder rounded-2xl p-6 space-y-3">
+                    <h4 class="text-xs font-mono uppercase tracking-wider text-zinc-400 font-bold">Integrantes de la Banda</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">${membersHtml}</div>
+                </div>
+            `;
         }
 
         function getEffectiveSongs() {
@@ -1094,30 +1396,45 @@
             currentHomeTab = tab;
             const songsBtn = document.getElementById('tabSongsBtn');
             const eventsBtn = document.getElementById('tabEventsBtn');
+            const bandBtn = document.getElementById('tabBandBtn');
             const searchContainer = document.getElementById('searchContainer');
             const songGrid = document.getElementById('songListGrid');
             const eventGrid = document.getElementById('eventListGrid');
+            const bandPanel = document.getElementById('bandPanel');
             const btnText = document.getElementById('primaryBtnText');
             const actionBtn = document.getElementById('primaryActionBtn');
 
+            songsBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
+            eventsBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
+            bandBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
+
             if (tab === 'songs') {
                 songsBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
-                eventsBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
                 searchContainer.classList.remove('hidden');
                 songGrid.classList.remove('hidden');
                 eventGrid.classList.add('hidden');
+                bandPanel.classList.add('hidden');
                 btnText.innerText = "Nueva Canción";
                 actionBtn.setAttribute("onclick", "openCreateModal()");
                 renderHomeView();
-            } else {
+            } else if (tab === 'events') {
                 eventsBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
-                songsBtn.className = "px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition";
                 searchContainer.classList.add('hidden');
                 songGrid.classList.add('hidden');
                 eventGrid.classList.remove('hidden');
+                bandPanel.classList.add('hidden');
                 btnText.innerText = "Nuevo Evento";
                 actionBtn.setAttribute("onclick", "openEventModal()");
                 renderEventsView();
+            } else {
+                bandBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
+                searchContainer.classList.add('hidden');
+                songGrid.classList.add('hidden');
+                eventGrid.classList.add('hidden');
+                bandPanel.classList.remove('hidden');
+                btnText.innerText = "Nueva Canción";
+                actionBtn.setAttribute("onclick", "openCreateModal()");
+                renderBandView();
             }
         }
 
@@ -1274,47 +1591,72 @@
         function renderEventsView() {
             const grid = document.getElementById('eventListGrid');
             grid.innerHTML = '';
-            const events = Object.values(userEvents);
+            const personalEvents = Object.values(userEvents);
+            const bandEvents = Object.values(bandPublishedEvents);
+            const allEvents = [
+                ...personalEvents.map(ev => ({ ...ev, source: 'personal' })),
+                ...bandEvents.map(ev => ({ ...ev, source: 'band' }))
+            ];
 
-            if (events.length === 0) {
+            if (allEvents.length === 0) {
                 grid.innerHTML = `<p class="text-xs text-zinc-500 col-span-full text-center py-10">No hay eventos creados todavía.</p>`;
                 return;
             }
 
-            events.forEach(ev => {
+            const songsMap = getEffectiveSongs();
+            const amLeader = isCurrentUserBandLeader();
+
+            allEvents.forEach(ev => {
                 const card = document.createElement('div');
                 card.className = "bg-stage-card border border-stage-cardBorder rounded-2xl p-5 hover:border-indigo-500/50 transition flex flex-col justify-between gap-4 shadow-sm";
 
                 let songsHtml = '';
-                const songsMap = getEffectiveSongs();
                 if (ev.songIds && ev.songIds.length > 0) {
-                    songsHtml = `<div class="space-y-1 my-2 bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800 text-xs">`;
+                    songsHtml = `<div class="space-y-1 my-2 bg-zinc-900/50 p-2 rounded-xl border border-zinc-800 text-xs">`;
                     ev.songIds.forEach((sId, idx) => {
                         const found = songsMap.find(s => s.id === sId);
-                        songsHtml += `<div class="text-zinc-300 font-medium">${idx + 1}. ${found ? found.title : 'Canción eliminada'}</div>`;
+                        const songTitle = found ? found.title : 'Canción eliminada';
+                        const songKey = found && found.originalKey ? `<span class="text-[10px] font-mono text-indigo-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">${found.originalKey}</span>` : '';
+                        songsHtml += `
+                            <button type="button" onclick="openSongFromEvent('${ev.id}', '${ev.source}', ${idx})" class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 hover:text-white font-medium transition group">
+                                <span class="truncate"><strong class="text-zinc-500 font-mono mr-1">${idx + 1}.</strong>${songTitle}</span>
+                                <span class="flex items-center gap-1.5 shrink-0">${songKey}<span class="text-[10px] text-indigo-400 opacity-80 group-hover:opacity-100">Abrir →</span></span>
+                            </button>
+                        `;
                     });
                     songsHtml += `</div>`;
                 } else {
                     songsHtml = `<p class="text-[11px] text-zinc-500 italic my-2">Sin canciones asignadas</p>`;
                 }
 
+                const sourceBadge = ev.source === 'band'
+                    ? `<span class="text-[10px] font-mono font-bold bg-sky-950/80 text-sky-300 px-2 py-0.5 rounded-lg border border-sky-800/60">Banda</span>`
+                    : `<span class="text-[10px] font-mono font-bold bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded-lg border border-indigo-800">${ev.date || 'Sin fecha'}</span>`;
+
+                const actionsHtml = ev.source === 'personal'
+                    ? `
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            ${bandData && amLeader ? `<button onclick="publishEventToBand('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 transition text-xs font-semibold border border-sky-800/60">Publicar a Banda</button>` : ''}
+                            <button onclick="openEventModal('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
+                            <button onclick="deleteEventAction('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
+                        </div>
+                    `
+                    : `<span class="text-[10px] font-mono text-zinc-400">${ev.date || 'Evento de banda'}</span>`;
+
                 card.innerHTML = `
                     <div>
                         <div class="flex items-start justify-between gap-2">
                             <h3 class="text-base font-bold text-white">${ev.name}</h3>
-                            <span class="text-[11px] font-mono bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded-lg border border-indigo-800">${ev.date || 'Sin fecha'}</span>
+                            ${sourceBadge}
                         </div>
                         <p class="text-xs text-zinc-400 mt-0.5">${ev.notes || 'Sin notas'}</p>
                         ${songsHtml}
                     </div>
-                    <div class="flex items-center justify-between border-t border-stage-cardBorder pt-3 text-xs">
-                        <button onclick="startEventPlaylist('${ev.id}')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-sm flex items-center gap-1.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-t border-stage-cardBorder pt-3 text-xs">
+                        <button onclick="startEventPlaylist('${ev.id}', '${ev.source}')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-sm flex items-center gap-1.5">
                             Iniciar Evento
                         </button>
-                        <div class="flex items-center gap-2">
-                            <button onclick="openEventModal('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
-                            <button onclick="deleteEventAction('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
-                        </div>
+                        ${actionsHtml}
                     </div>
                 `;
                 grid.appendChild(card);
@@ -1355,7 +1697,49 @@
             if (isScrolling) toggleAutoScroll();
 
             if (currentHomeTab === 'songs') renderHomeView();
-            else renderEventsView();
+            else if (currentHomeTab === 'events') renderEventsView();
+            else renderBandView();
+        }
+
+        function populateEventPlaylistBar() {
+            const nav = document.getElementById('eventPlaylistNav');
+            const select = document.getElementById('eventSongQuickSelect');
+            const info = document.getElementById('eventPlaylistInfo');
+
+            if (!activeEventPlaylist || activeEventPlaylist.length === 0) {
+                nav.classList.add('hidden');
+                return;
+            }
+
+            nav.classList.remove('hidden');
+            nav.classList.add('flex');
+            info.innerText = `${activeEventIndex + 1} / ${activeEventPlaylist.length}`;
+
+            const songsMap = getEffectiveSongs();
+            select.innerHTML = activeEventPlaylist.map((sId, idx) => {
+                const found = songsMap.find(s => s.id === sId);
+                const title = found ? found.title : `Canción ${idx + 1}`;
+                return `<option value="${idx}" ${idx === activeEventIndex ? 'selected' : ''}>${idx + 1}. ${title}</option>`;
+            }).join('');
+        }
+
+        function jumpToEventSong(indexStr) {
+            if (!activeEventPlaylist) return;
+            const idx = parseInt(indexStr, 10);
+            if (isNaN(idx) || idx < 0 || idx >= activeEventPlaylist.length) return;
+            activeEventIndex = idx;
+            openSongReader(activeEventPlaylist[activeEventIndex]);
+        }
+
+        function openSongFromEvent(eventId, source = 'personal', songIndex = 0) {
+            const ev = source === 'band' ? bandPublishedEvents[eventId] : userEvents[eventId];
+            if (!ev || !ev.songIds || ev.songIds.length === 0) {
+                alert("Este evento no tiene canciones asignadas.");
+                return;
+            }
+            activeEventPlaylist = ev.songIds;
+            activeEventIndex = Math.max(0, Math.min(songIndex, ev.songIds.length - 1));
+            openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
         function openSongReader(songId, syncOptions = {}) {
@@ -1379,12 +1763,7 @@
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('readerView').classList.remove('hidden');
 
-            if (activeEventPlaylist) {
-                document.getElementById('eventPlaylistNav').classList.remove('hidden');
-                document.getElementById('eventPlaylistInfo').innerText = `${activeEventIndex + 1} / ${activeEventPlaylist.length}`;
-            } else {
-                document.getElementById('eventPlaylistNav').classList.add('hidden');
-            }
+            populateEventPlaylistBar();
 
             renderKeyMenuGrid();
             updateCurrentKeyDisplay();
@@ -1414,8 +1793,8 @@
 
         function editCurrentSong() { if (currentSong) openEditModal(currentSong.id); }
 
-        function startEventPlaylist(eventId) {
-            const ev = userEvents[eventId];
+        function startEventPlaylist(eventId, source = 'personal') {
+            const ev = source === 'band' ? bandPublishedEvents[eventId] : userEvents[eventId];
             if (!ev || !ev.songIds || ev.songIds.length === 0) {
                 alert("Este evento no tiene canciones asignadas.");
                 return;
@@ -2612,7 +2991,7 @@
             }
 
             if (currentHomeTab === 'songs') renderHomeView();
-            else renderEventsView();
+            else if (currentHomeTab === 'events') renderEventsView();
         }
 
         const _origLoadDataForUser = loadDataForUser;
@@ -2679,6 +3058,7 @@
                 updateNetworkBadge();
             });
 
+            loadUserBandSubscription();
             flushOfflineQueue();
         };
 
