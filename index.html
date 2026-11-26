@@ -362,7 +362,7 @@
                     <h1 id="songTitle" class="text-2xl md:text-3xl font-black tracking-tight text-white">---</h1>
                     <p id="songArtist" class="text-xs font-semibold text-zinc-400 mt-0.5 uppercase tracking-wider">---</p>
                 </div>
-                <div class="flex items-center gap-3 text-xs text-zinc-400 font-mono bg-stage-card px-3 py-1.5 rounded-xl border border-stage-cardBorder">
+                <div class="flex flex-wrap items-center gap-3 text-xs text-zinc-400 font-mono bg-stage-card px-3 py-1.5 rounded-xl border border-stage-cardBorder">
                     <span>Tempo: <strong id="songBpm" class="text-white">-- BPM</strong></span>
                     <span>•</span>
                     <span>Compás: <strong id="songTimeSig" class="text-white">4/4</strong></span>
@@ -370,6 +370,7 @@
                     <span>Tono: <strong id="songOrigKey" class="text-white">--</strong></span>
                     <span>•</span>
                     <span id="modeStatus" class="font-mono text-[11px]">ESTADO: <strong class="text-emerald-400 font-medium">LECTURA</strong></span>
+                    <span id="networkStatusBadge" class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-950/70 text-emerald-400 border border-emerald-800/60">EN LÍNEA</span>
                 </div>
             </div>
 
@@ -2466,6 +2467,256 @@
         canvas.addEventListener('pointermove', draw);
         canvas.addEventListener('pointerup', stopDrawing);
         canvas.addEventListener('pointercancel', stopDrawing);
+
+        // --- SOPORTE OFFLINE: RESPALDO LOCAL, COLA Y ESTADO DE RED ---
+        const OFFLINE_KEYS = {
+            globalSongs: 'setlist_offline_global_songs',
+            customSongs: (uid) => `setlist_offline_custom_songs_${uid}`,
+            events: (uid) => `setlist_offline_events_${uid}`,
+            annotations: (uid, songId) => `setlist_offline_annotations_${uid}_${songId}`,
+            queue: (uid) => `setlist_offline_queue_${uid}`
+        };
+
+        function updateNetworkBadge(extraText = '') {
+            const badge = document.getElementById('networkStatusBadge');
+            if (!badge) return;
+
+            const online = navigator.onLine;
+            const pendingCount = currentUser ? getPendingQueue(currentUser.uid).length : 0;
+
+            if (!online) {
+                badge.innerText = pendingCount > 0 ? `SIN CONEXIÓN (${pendingCount} pend.)` : 'SIN CONEXIÓN';
+                badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-700/60';
+            } else if (extraText) {
+                badge.innerText = extraText;
+                badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-sky-950/80 text-sky-300 border border-sky-700/60';
+            } else if (pendingCount > 0) {
+                badge.innerText = `EN LÍNEA (${pendingCount} pend.)`;
+                badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-700/60';
+            } else {
+                badge.innerText = 'EN LÍNEA';
+                badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-950/70 text-emerald-400 border border-emerald-800/60';
+            }
+        }
+
+        function saveOfflineSnapshot(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {
+                console.warn("No se pudo guardar respaldo local:", e);
+            }
+        }
+
+        function loadOfflineSnapshot(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : fallback;
+            } catch (e) {
+                return fallback;
+            }
+        }
+
+        function getPendingQueue(uid) {
+            if (!uid) return [];
+            return loadOfflineSnapshot(OFFLINE_KEYS.queue(uid), []);
+        }
+
+        function enqueueOfflineAction(action) {
+            if (!currentUser) return;
+            const uid = currentUser.uid;
+            const queue = getPendingQueue(uid);
+            queue.push({ ...action, queuedAt: Date.now() });
+            saveOfflineSnapshot(OFFLINE_KEYS.queue(uid), queue);
+            updateNetworkBadge();
+        }
+
+        async function flushOfflineQueue() {
+            if (!currentUser || !navigator.onLine) return;
+            const uid = currentUser.uid;
+            const queue = getPendingQueue(uid);
+            if (queue.length === 0) {
+                updateNetworkBadge();
+                return;
+            }
+
+            updateNetworkBadge('SINCRONIZANDO...');
+            const remaining = [];
+
+            for (const item of queue) {
+                try {
+                    if (item.type === 'custom_song') {
+                        await db.collection("users").doc(uid).collection("custom_songs").doc(item.docId).set(item.payload);
+                    } else if (item.type === 'global_song_update') {
+                        await db.collection("songs").doc(item.docId).update(item.payload);
+                    } else if (item.type === 'global_song_add') {
+                        await db.collection("songs").add(item.payload);
+                    } else if (item.type === 'event_set') {
+                        await db.collection("users").doc(uid).collection("events").doc(item.docId).set(item.payload);
+                    } else if (item.type === 'event_add') {
+                        await db.collection("users").doc(uid).collection("events").add(item.payload);
+                    } else if (item.type === 'annotation') {
+                        await db.collection("users").doc(uid).collection("annotations").doc(item.docId).set({
+                            imageData: item.imageData,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                } catch (e) {
+                    remaining.push(item);
+                }
+            }
+
+            saveOfflineSnapshot(OFFLINE_KEYS.queue(uid), remaining);
+            updateNetworkBadge();
+        }
+
+        const _origLoadDataForUser = loadDataForUser;
+        loadDataForUser = function() {
+            const cachedGlobal = loadOfflineSnapshot(OFFLINE_KEYS.globalSongs, null);
+            if (cachedGlobal && Array.isArray(cachedGlobal) && globalSongs.length === 0) {
+                globalSongs = cachedGlobal;
+            }
+
+            if (currentUser) {
+                const cachedCustom = loadOfflineSnapshot(OFFLINE_KEYS.customSongs(currentUser.uid), null);
+                if (cachedCustom && Object.keys(userCustomSongs).length === 0) {
+                    userCustomSongs = cachedCustom;
+                }
+                const cachedEvents = loadOfflineSnapshot(OFFLINE_KEYS.events(currentUser.uid), null);
+                if (cachedEvents && Object.keys(userEvents).length === 0) {
+                    userEvents = cachedEvents;
+                }
+                renderHomeView();
+                if (currentHomeTab === 'events') renderEventsView();
+            }
+
+            db.collection("songs").onSnapshot((snapshot) => {
+                globalSongs = [];
+                snapshot.forEach((doc) => { globalSongs.push({ id: doc.id, ...doc.data() }); });
+                saveOfflineSnapshot(OFFLINE_KEYS.globalSongs, globalSongs);
+                loadUserData();
+            }, () => {
+                updateNetworkBadge();
+            });
+        };
+
+        const _origLoadUserData = loadUserData;
+        loadUserData = function() {
+            if (!currentUser) return;
+            const uid = currentUser.uid;
+
+            db.collection("users").doc(uid).collection("custom_songs").onSnapshot((snapshot) => {
+                const freshCustom = {};
+                snapshot.forEach((doc) => { freshCustom[doc.id] = doc.data(); });
+                if (!snapshot.metadata.fromCache || Object.keys(freshCustom).length > 0) {
+                    userCustomSongs = freshCustom;
+                    saveOfflineSnapshot(OFFLINE_KEYS.customSongs(uid), userCustomSongs);
+                }
+                renderHomeView();
+            }, () => {
+                updateNetworkBadge();
+            });
+
+            db.collection("users").doc(uid).collection("events").onSnapshot((snapshot) => {
+                const freshEvents = {};
+                snapshot.forEach((doc) => { freshEvents[doc.id] = { id: doc.id, ...doc.data() }; });
+                if (!snapshot.metadata.fromCache || Object.keys(freshEvents).length > 0) {
+                    userEvents = freshEvents;
+                    saveOfflineSnapshot(OFFLINE_KEYS.events(uid), userEvents);
+                }
+                if (currentHomeTab === 'events') renderEventsView();
+            }, () => {
+                updateNetworkBadge();
+            });
+
+            flushOfflineQueue();
+        };
+
+        const _origLoadSongAnnotations = loadSongAnnotations;
+        loadSongAnnotations = async function(songId) {
+            if (!currentUser || !songId) return;
+            resizeCanvas(false);
+            mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+            document.querySelectorAll('.user-text-input').forEach(el => el.remove());
+
+            const localSaved = loadOfflineSnapshot(OFFLINE_KEYS.annotations(currentUser.uid, songId), null);
+            if (localSaved && localSaved.imageData) {
+                const img = new Image();
+                img.onload = () => {
+                    if (!currentSong || currentSong.id !== songId) return;
+                    resizeCanvas(false);
+                    mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+                    mainBufferCtx.drawImage(img, 0, 0);
+                    renderCanvas();
+                };
+                img.src = localSaved.imageData;
+            }
+
+            if (navigator.onLine) {
+                try {
+                    const docRef = db.collection("users").doc(currentUser.uid).collection("annotations").doc(songId);
+                    const doc = await docRef.get();
+                    if (doc.exists && doc.data().imageData) {
+                        const remoteData = doc.data().imageData;
+                        if (!localSaved || localSaved.imageData !== remoteData) {
+                            saveOfflineSnapshot(OFFLINE_KEYS.annotations(currentUser.uid, songId), { imageData: remoteData });
+                            const img = new Image();
+                            img.onload = () => {
+                                if (!currentSong || currentSong.id !== songId) return;
+                                resizeCanvas(false);
+                                mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
+                                mainBufferCtx.drawImage(img, 0, 0);
+                                renderCanvas();
+                            };
+                            img.src = remoteData;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Usando anotaciones locales por falta de red.");
+                }
+            }
+            updateNetworkBadge();
+        };
+
+        const _origSaveSongAnnotations = saveSongAnnotations;
+        saveSongAnnotations = async function(immediate = false) {
+            if (!currentUser || !currentSong) return;
+            const uid = currentUser.uid;
+            const targetSongId = currentSong.id;
+
+            let imageData = mainBufferCanvas.toDataURL("image/png");
+            if (imageData.length > 900000) {
+                imageData = mainBufferCanvas.toDataURL("image/webp", 0.85);
+            }
+
+            saveOfflineSnapshot(OFFLINE_KEYS.annotations(uid, targetSongId), { imageData });
+
+            if (!navigator.onLine) {
+                enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
+                return;
+            }
+
+            try {
+                await db.collection("users").doc(uid).collection("annotations").doc(targetSongId).set({
+                    imageData: imageData,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                hasUnsavedChanges = false;
+                updateNetworkBadge();
+            } catch (e) {
+                enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
+            }
+        };
+
+        window.addEventListener('online', () => {
+            updateNetworkBadge();
+            flushOfflineQueue();
+        });
+        window.addEventListener('offline', () => {
+            updateNetworkBadge();
+        });
+        document.addEventListener('DOMContentLoaded', () => {
+            updateNetworkBadge();
+        });
     </script>
 </body>
 </html>
