@@ -408,17 +408,13 @@
 
     <!-- BARRA FLOTANTE DE ANOTACIONES -->
     <div id="floatingToolbar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-950/80 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-full shadow-[0_0_25px_rgba(0,0,0,0.5)] flex items-center space-x-1.5 z-50 hidden transition-all duration-300">
-        <!-- Lápiz -->
         <button id="toolPen" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors" title="Lápiz">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
         </button>
-        <!-- Marcador -->
         <button id="toolHighlighter" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors" title="Marcador">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9.5 3h5l4 4v2.5a1 1 0 01-.3.7l-9 9a1 1 0 01-.7.3H6.5a1 1 0 01-1-1v-3.5a1 1 0 01.3-.7l3.7-3.7V3z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M3 21h18"></path></svg>
         </button>
-        <!-- Texto -->
         <button id="toolText" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors font-mono font-bold text-xs" title="Texto">T</button>
-        <!-- Goma / Borrador -->
         <button id="toolEraser" class="btn-futuristic tool-btn p-2 rounded-full text-gray-400 hover:text-white transition-colors" title="Goma">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21H9l-5.414-5.414a2 2 0 010-2.828l8.586-8.586a2 2 0 012.828 0L21 9.172a2 2 0 010 2.828L13 20h6v1z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="m7 11 8 8"></path></svg>
         </button>
@@ -522,7 +518,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE CREACIÓN / EDICIÓN (EDITOR DE CANCIONES INTEGRADO) -->
+    <!-- MODAL DE CREACIÓN / EDICIÓN -->
     <div id="createModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 hidden">
         <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-6xl w-full p-5 md:p-6 shadow-2xl flex flex-col gap-4 max-h-[95vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-stage-cardBorder pb-3">
@@ -537,13 +533,8 @@
             <input type="hidden" id="editSongId">
             <input type="hidden" id="isCustomEdit" value="false">
 
-            <!-- CONTENEDOR PRINCIPAL EN 2 COLUMNAS -->
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-                <!-- COLUMNA IZQUIERDA: HERRAMIENTAS DE INSERCIÓN -->
                 <div class="lg:col-span-5 flex flex-col gap-4">
-
-                    <!-- APARTADO 1: SECCIONES -->
                     <div class="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2.5">
                         <span class="text-[10px] font-mono tracking-wider text-indigo-400 uppercase font-bold">1. Secciones de la canción</span>
                         <div class="grid grid-cols-3 gap-1.5">
@@ -639,7 +630,6 @@
                         </div>
                     </div>
 
-                    <!-- APARTADO 2: ACORDES Y LLAVES -->
                     <div class="bg-zinc-900/70 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2.5">
                         <div class="flex items-center justify-between">
                             <span class="text-[10px] font-mono tracking-wider text-amber-400 uppercase font-bold">2. Acordes y Llaves</span>
@@ -650,10 +640,8 @@
                         </button>
                         <div id="chordsGridContainer" class="grid grid-cols-4 gap-1.5 pt-1"></div>
                     </div>
-
                 </div>
 
-                <!-- COLUMNA DERECHA: METADATOS Y EDITOR DE TEXTO -->
                 <div class="lg:col-span-7 flex flex-col gap-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                         <div>
@@ -690,7 +678,6 @@
                         <textarea id="newContent" rows="14" placeholder="[V1]&#10;{D}&#10;Aquí estás..." class="w-full flex-1 bg-zinc-900 border border-zinc-800 rounded-xl p-4 font-mono text-sm leading-relaxed text-white focus:outline-none focus:border-indigo-500"></textarea>
                     </div>
                 </div>
-
             </div>
 
             <div class="flex items-center justify-end gap-2 pt-2 text-xs border-t border-stage-cardBorder">
@@ -752,14 +739,13 @@
         </div>
     </div>
 
-
     <script>
         let currentUser = null;
         let globalSongs = [];
         let userCustomSongs = {};
         let userEvents = {};
-        let bandData = null; // { code, name, leaderUid, members: { [uid]: { email, role: 'leader' | 'musician' } } }
-        let bandPublishedEvents = {}; // { [eventId]: eventData }
+        let bandData = null;
+        let bandPublishedEvents = {};
         let bandUnsubscribe = null;
         let bandEventsUnsubscribe = null;
         let currentSong = null;
@@ -770,14 +756,13 @@
         let activeEventIndex = 0;
 
         // --- ESTADO DE SINCRONIZACIÓN MAESTRO / ESCLAVO ---
-        let liveRole = localStorage.getItem('setlist_live_role') || 'off'; // 'off' | 'master' | 'slave'
+        let liveRole = localStorage.getItem('setlist_live_role') || 'off';
         let liveRoomCode = localStorage.getItem('setlist_live_room') || '';
         let liveRoomUnsubscribe = null;
         let activeLiveSectionId = null;
         let lastHandledScrollStamp = 0;
         let isApplyingRemoteSync = false;
 
-        // --- CONFIGURACIÓN DE LOS 24 MENÚS DESPLEGABLES DE ACORDES (6 OPCIONES CADA UNO) ---
         const CHORD_MENUS_CONFIG = [
             { label: 'C',   options: ['C', 'Csus2', 'Csus4', 'C7', 'Cmaj7', 'C/E'] },
             { label: 'Cm',  options: ['Cm', 'Cm7', 'Cmaj7', 'Cm9', 'Cmadd9', 'Cm/Eb'] },
@@ -831,7 +816,7 @@
 
         buildChordDropdowns();
 
-        // --- FUNCIONES DE SINCRONIZACIÓN MAESTRO / ESCLAVO ---
+        // --- SINCRONIZACIÓN MAESTRO / ESCLAVO ---
         function toggleSyncMenu(e) {
             e.stopPropagation();
             const menu = document.getElementById('syncMenu');
@@ -929,16 +914,31 @@
             }
         }
 
+        function resolveSectionElement(sectionId) {
+            if (!sectionId) return null;
+            let el = document.getElementById(sectionId);
+            if (el) return el;
+            const suffixMatch = sectionId.match(/^[a-zA-Z0-9-]+-(\d+)-([A-Z0-9]+)$/);
+            if (suffixMatch) {
+                const idx = parseInt(suffixMatch[1], 10);
+                const cards = document.querySelectorAll('#chartContainer .section-card');
+                if (cards[idx]) return cards[idx];
+            }
+            return null;
+        }
+
         function scheduleSlaveSectionScroll(sectionId) {
             if (!sectionId) return;
-            requestAnimationFrame(() => {
+            const runScroll = () => {
                 if (typeof resizeCanvas === 'function') {
                     resizeCanvas(true);
                 }
                 scrollToSection(sectionId);
-                setTimeout(() => {
-                    scrollToSection(sectionId);
-                }, 140);
+            };
+            requestAnimationFrame(() => {
+                runScroll();
+                setTimeout(runScroll, 120);
+                setTimeout(runScroll, 320);
             });
         }
 
@@ -984,7 +984,7 @@
                         }
                     }
                 } finally {
-                    setTimeout(() => { isApplyingRemoteSync = false; }, 160);
+                    setTimeout(() => { isApplyingRemoteSync = false; }, 260);
                 }
             });
         }
@@ -1016,8 +1016,9 @@
                 card.classList.remove('section-active-live');
             });
             if (activeLiveSectionId) {
-                const targetCard = document.getElementById(activeLiveSectionId);
+                const targetCard = resolveSectionElement(activeLiveSectionId);
                 if (targetCard) {
+                    activeLiveSectionId = targetCard.id;
                     targetCard.classList.add('section-active-live');
                 }
             }
@@ -1087,31 +1088,6 @@
         function logout() {
             localStorage.removeItem('setlist_last_uid');
             auth.signOut();
-        }
-
-        function loadDataForUser() {
-            db.collection("songs").onSnapshot((snapshot) => {
-                globalSongs = [];
-                snapshot.forEach((doc) => { globalSongs.push({ id: doc.id, ...doc.data() }); });
-                loadUserData();
-            });
-        }
-
-        function loadUserData() {
-            if (!currentUser) return;
-            db.collection("users").doc(currentUser.uid).collection("custom_songs").onSnapshot((snapshot) => {
-                userCustomSongs = {};
-                snapshot.forEach((doc) => { userCustomSongs[doc.id] = doc.data(); });
-                renderHomeView();
-            });
-
-            db.collection("users").doc(currentUser.uid).collection("events").onSnapshot((snapshot) => {
-                userEvents = {};
-                snapshot.forEach((doc) => { userEvents[doc.id] = { id: doc.id, ...doc.data() }; });
-                if (currentHomeTab === 'events') renderEventsView();
-            });
-
-            loadUserBandSubscription();
         }
 
         function loadUserBandSubscription() {
@@ -1701,6 +1677,7 @@
             document.getElementById('homeView').classList.remove('hidden');
             document.getElementById('readerView').classList.add('hidden');
             document.getElementById('eventPlaylistNav').classList.add('hidden');
+            document.getElementById('eventPlaylistNav').classList.remove('flex');
 
             activeEventPlaylist = null;
             activeEventIndex = 0;
@@ -1728,6 +1705,7 @@
 
             if (!activeEventPlaylist || activeEventPlaylist.length === 0) {
                 nav.classList.add('hidden');
+                nav.classList.remove('flex');
                 return;
             }
 
@@ -1748,6 +1726,7 @@
             const idx = parseInt(indexStr, 10);
             if (isNaN(idx) || idx < 0 || idx >= activeEventPlaylist.length) return;
             activeEventIndex = idx;
+            activeLiveSectionId = null;
             openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
@@ -1759,6 +1738,7 @@
             }
             activeEventPlaylist = ev.songIds;
             activeEventIndex = Math.max(0, Math.min(songIndex, ev.songIds.length - 1));
+            activeLiveSectionId = null;
             openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
@@ -1802,6 +1782,7 @@
             } else {
                 const firstSecId = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null;
                 highlightActiveSection(firstSecId);
+                window.scrollTo({ top: 0, behavior: 'instant' });
                 if (liveRole === 'master' && !isApplyingRemoteSync) {
                     pushLiveState(true);
                 }
@@ -1810,7 +1791,10 @@
             requestAnimationFrame(() => {
                 setTimeout(() => {
                     loadSongAnnotations(currentSong.id);
-                }, 60);
+                    if (syncOptions.fromRemote && syncOptions.sectionId) {
+                        scheduleSlaveSectionScroll(syncOptions.sectionId);
+                    }
+                }, 90);
             });
         }
 
@@ -1824,6 +1808,7 @@
             }
             activeEventPlaylist = ev.songIds;
             activeEventIndex = 0;
+            activeLiveSectionId = null;
             openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
@@ -1831,6 +1816,7 @@
             if (!activeEventPlaylist) return;
             if (activeEventIndex < activeEventPlaylist.length - 1) {
                 activeEventIndex++;
+                activeLiveSectionId = null;
                 openSongReader(activeEventPlaylist[activeEventIndex]);
             } else { alert("¡Has llegado al final del evento!"); }
         }
@@ -1839,6 +1825,7 @@
             if (!activeEventPlaylist) return;
             if (activeEventIndex > 0) {
                 activeEventIndex--;
+                activeLiveSectionId = null;
                 openSongReader(activeEventPlaylist[activeEventIndex]);
             }
         }
@@ -1848,9 +1835,14 @@
             bar.innerHTML = '';
             if (!currentSong.sections) return;
 
-            currentSong.sections.forEach(sec => {
+            currentSong.sections.forEach((sec, index) => {
+                const secDomId = sec.id || `sec-${index}-${sec.code || 'S'}`;
                 const badgeBtn = document.createElement('button');
-                badgeBtn.onclick = () => triggerSectionNavigation(sec.id);
+                badgeBtn.type = 'button';
+                badgeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    triggerSectionNavigation(secDomId);
+                };
                 const colorClasses = getBadgeClasses(sec.type);
                 badgeBtn.className = `flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition transform active:scale-95 whitespace-nowrap shadow-sm ${colorClasses}`;
                 badgeBtn.innerHTML = `<span>${sec.code}</span>${sec.count ? `<span class="opacity-75 text-[10px] bg-black/20 px-1 rounded">× ${sec.count}</span>` : ''}`;
@@ -1888,14 +1880,18 @@
 
             const netTranspose = currentTranspose - currentCapo;
 
-            currentSong.sections.forEach(sec => {
+            currentSong.sections.forEach((sec, index) => {
+                const secDomId = sec.id || `sec-${index}-${sec.code || 'S'}`;
+                sec.id = secDomId;
+
                 const card = document.createElement('div');
-                card.id = sec.id;
-                const activeClass = activeLiveSectionId === sec.id ? 'section-active-live' : '';
+                card.id = secDomId;
+                const activeClass = activeLiveSectionId === secDomId ? 'section-active-live' : '';
                 card.className = `section-card ${activeClass} bg-stage-card border border-stage-cardBorder rounded-2xl p-4 md:p-5 shadow-sm scroll-mt-20 transition-all`;
-                card.onclick = () => {
-                    if (liveRole === 'master') {
-                        highlightActiveSection(sec.id);
+                card.onclick = (e) => {
+                    e.stopPropagation();
+                    if (liveRole === 'master' && !isApplyingRemoteSync) {
+                        highlightActiveSection(secDomId);
                         pushLiveState(true);
                     }
                 };
@@ -1910,7 +1906,7 @@
                 `;
 
                 let contentHtml = '<div class="space-y-1">';
-                sec.lines.forEach(lineText => {
+                (sec.lines || []).forEach(lineText => {
                     const transposedLine = transposeChordLine(lineText, netTranspose);
                     const formattedHtml = formatLineToHtml(transposedLine, false);
                     contentHtml += `<div class="chord-lyric-block">${formattedHtml}</div>`;
@@ -1950,7 +1946,7 @@
                         </div>
                         <div class="space-y-1">
                 `;
-                sec.lines.forEach(lineText => {
+                (sec.lines || []).forEach(lineText => {
                     const transposedLine = transposeChordLine(lineText, netTranspose);
                     const formattedHtml = formatLineToHtml(transposedLine, true);
                     if (!onlyLyrics || !transposedLine.includes('{')) {
@@ -1989,7 +1985,7 @@
                 ctx.fillStyle = '#0F172A'; ctx.font = 'bold 18px monospace';
                 ctx.fillText(`${sec.code} - ${sec.label}`, 95, cursorY);
                 cursorY += 40;
-                sec.lines.forEach(lineText => {
+                (sec.lines || []).forEach(lineText => {
                     const transposedLine = transposeChordLine(lineText, netTranspose);
                     if (!onlyLyrics || !transposedLine.includes('{')) {
                         ctx.fillText(transposedLine.replace(/\{(.*?)\}/g, '$1'), 95, cursorY);
@@ -2113,17 +2109,17 @@
 
         function scrollToSection(id) {
             if (!id) return;
-            const el = document.getElementById(id);
+            const el = resolveSectionElement(id);
             if (!el) return;
 
             const header = document.querySelector('#readerView header');
-            const headerOffset = header ? header.getBoundingClientRect().height + 14 : 84;
+            const headerOffset = header ? header.getBoundingClientRect().height + 16 : 96;
             const elementTop = el.getBoundingClientRect().top + window.scrollY;
             const targetY = Math.max(0, elementTop - headerOffset);
 
             window.scrollTo({
                 top: targetY,
-                behavior: 'smooth'
+                behavior: isApplyingRemoteSync ? 'auto' : 'smooth'
             });
         }
 
@@ -2368,7 +2364,7 @@
             if (song.sections && Array.isArray(song.sections)) {
                 song.sections.forEach(sec => {
                     rawContent += `[${sec.code}${sec.count ? ' x' + sec.count : ''}]\n`;
-                    sec.lines.forEach(line => { rawContent += line + "\n"; });
+                    (sec.lines || []).forEach(line => { rawContent += line + "\n"; });
                     rawContent += "\n";
                 });
             }
@@ -2446,15 +2442,19 @@
         function parseChordProInput(rawText) {
             const lines = rawText.split('\n');
             const sections = [];
-            let currentSec = { id: "sec-1", code: "V1", label: "Verso 1", type: "verse", count: null, lines: [] };
+            let secIndex = 0;
+            let currentSec = { id: `sec-${secIndex}-V1`, code: "V1", label: "Verso 1", type: "verse", count: null, lines: [] };
 
-            lines.forEach((line, idx) => {
+            lines.forEach((line) => {
                 const trimmed = line.trim();
                 const match = trimmed.match(/^\[(.*?)\]/);
                 if (match && !trimmed.includes(' ')) {
-                    if (currentSec.lines.length > 0) sections.push(currentSec);
+                    if (currentSec.lines.length > 0) {
+                        sections.push(currentSec);
+                        secIndex++;
+                    }
                     const parsed = parseSectionTag(match[1]);
-                    currentSec = { id: `sec-${Date.now()}-${idx}`, ...parsed, lines: [] };
+                    currentSec = { id: `sec-${secIndex}-${parsed.code || 'S'}`, ...parsed, lines: [] };
                     return;
                 }
                 if (trimmed !== "") currentSec.lines.push(line);
@@ -2538,7 +2538,7 @@
             }
         }
 
-        // --- LÓGICA DE DIBUJO Y ANOTACIONES PERSISTENTES POR USUARIO Y CANCIÓN ---
+        // --- LÓGICA DE DIBUJO Y ANOTACIONES ---
         const container = document.getElementById('readerMainContainer');
         const canvas = document.getElementById('annotationCanvas');
         const ctx = canvas.getContext('2d');
@@ -2572,65 +2572,6 @@
         let strokePoints = [];
         let saveTimeout = null;
         let hasUnsavedChanges = false;
-
-        async function loadSongAnnotations(songId) {
-            if (!currentUser || !songId) return;
-            try {
-                resizeCanvas(false);
-                const docRef = db.collection("users").doc(currentUser.uid).collection("annotations").doc(songId);
-                const doc = await docRef.get();
-
-                mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
-                document.querySelectorAll('.user-text-input').forEach(el => el.remove());
-
-                if (doc.exists && doc.data().imageData) {
-                    const img = new Image();
-                    img.onload = () => {
-                        if (!currentSong || currentSong.id !== songId) return;
-                        resizeCanvas(false);
-                        mainBufferCtx.clearRect(0, 0, mainBufferCanvas.width, mainBufferCanvas.height);
-                        mainBufferCtx.drawImage(img, 0, 0);
-                        renderCanvas();
-                    };
-                    img.src = doc.data().imageData;
-                } else {
-                    renderCanvas();
-                }
-            } catch (e) {
-                console.error("Error al cargar anotaciones:", e);
-            }
-        }
-
-        async function saveSongAnnotations(immediate = false) {
-            if (!currentUser || !currentSong) return;
-            const targetSongId = currentSong.id;
-            hasUnsavedChanges = true;
-
-            const executeSave = async () => {
-                if (!hasUnsavedChanges) return;
-                try {
-                    let imageData = mainBufferCanvas.toDataURL("image/png");
-                    if (imageData.length > 900000) {
-                        imageData = mainBufferCanvas.toDataURL("image/webp", 0.85);
-                    }
-
-                    await db.collection("users").doc(currentUser.uid).collection("annotations").doc(targetSongId).set({
-                        imageData: imageData,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    hasUnsavedChanges = false;
-                } catch (e) {
-                    console.error("Error al guardar anotaciones:", e);
-                }
-            };
-
-            clearTimeout(saveTimeout);
-            if (immediate) {
-                await executeSave();
-            } else {
-                saveTimeout = setTimeout(executeSave, 300);
-            }
-        }
 
         function resizeCanvas(preserveContent = true) {
             if (!container) return;
@@ -2903,7 +2844,7 @@
         canvas.addEventListener('pointerup', stopDrawing);
         canvas.addEventListener('pointercancel', stopDrawing);
 
-        // --- SOPORTE OFFLINE: RESPALDO LOCAL, COLA Y ESTADO DE RED ---
+        // --- SOPORTE OFFLINE ---
         const OFFLINE_KEYS = {
             globalSongs: 'setlist_offline_global_songs',
             customSongs: (uid) => `setlist_offline_custom_songs_${uid || 'default'}`,
@@ -3028,8 +2969,7 @@
             else if (currentHomeTab === 'events') renderEventsView();
         }
 
-        const _origLoadDataForUser = loadDataForUser;
-        loadDataForUser = function() {
+        function loadDataForUser() {
             hydrateFromLocalSnapshots();
 
             db.collection("songs").onSnapshot((snapshot) => {
@@ -3047,10 +2987,9 @@
                 hydrateFromLocalSnapshots();
                 updateNetworkBadge();
             });
-        };
+        }
 
-        const _origLoadUserData = loadUserData;
-        loadUserData = function() {
+        function loadUserData() {
             const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
             if (!uid) return;
 
@@ -3094,10 +3033,9 @@
 
             loadUserBandSubscription();
             flushOfflineQueue();
-        };
+        }
 
-        const _origLoadSongAnnotations = loadSongAnnotations;
-        loadSongAnnotations = async function(songId) {
+        async function loadSongAnnotations(songId) {
             const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
             if (!uid || !songId) return;
             resizeCanvas(false);
@@ -3141,37 +3079,47 @@
                 }
             }
             updateNetworkBadge();
-        };
+        }
 
-        const _origSaveSongAnnotations = saveSongAnnotations;
-        saveSongAnnotations = async function(immediate = false) {
+        async function saveSongAnnotations(immediate = false) {
             const uid = (currentUser && currentUser.uid) || localStorage.getItem('setlist_last_uid');
             if (!uid || !currentSong) return;
             const targetSongId = currentSong.id;
+            hasUnsavedChanges = true;
 
-            let imageData = mainBufferCanvas.toDataURL("image/png");
-            if (imageData.length > 900000) {
-                imageData = mainBufferCanvas.toDataURL("image/webp", 0.85);
+            const executeSave = async () => {
+                if (!hasUnsavedChanges) return;
+                let imageData = mainBufferCanvas.toDataURL("image/png");
+                if (imageData.length > 900000) {
+                    imageData = mainBufferCanvas.toDataURL("image/webp", 0.85);
+                }
+
+                saveOfflineSnapshot(OFFLINE_KEYS.annotations(uid, targetSongId), { imageData });
+
+                if (!navigator.onLine || !currentUser) {
+                    enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
+                    return;
+                }
+
+                try {
+                    await db.collection("users").doc(uid).collection("annotations").doc(targetSongId).set({
+                        imageData: imageData,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    hasUnsavedChanges = false;
+                    updateNetworkBadge();
+                } catch (e) {
+                    enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
+                }
+            };
+
+            clearTimeout(saveTimeout);
+            if (immediate) {
+                await executeSave();
+            } else {
+                saveTimeout = setTimeout(executeSave, 300);
             }
-
-            saveOfflineSnapshot(OFFLINE_KEYS.annotations(uid, targetSongId), { imageData });
-
-            if (!navigator.onLine || !currentUser) {
-                enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
-                return;
-            }
-
-            try {
-                await db.collection("users").doc(uid).collection("annotations").doc(targetSongId).set({
-                    imageData: imageData,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                hasUnsavedChanges = false;
-                updateNetworkBadge();
-            } catch (e) {
-                enqueueOfflineAction({ type: 'annotation', docId: targetSongId, imageData });
-            }
-        };
+        }
 
         window.addEventListener('online', () => {
             updateNetworkBadge();
@@ -3187,7 +3135,6 @@
             }
         });
 
-        // --- REGISTRO DE SERVICE WORKER PARA CARGA OFFLINE ---
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch((err) => {
