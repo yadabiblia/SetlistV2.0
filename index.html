@@ -760,8 +760,11 @@
         let liveRoomCode = localStorage.getItem('setlist_live_room') || '';
         let liveRoomUnsubscribe = null;
         let activeLiveSectionId = null;
+        let activeLiveSectionCode = null;
+        let activeLiveSectionIndex = null;
         let lastHandledScrollStamp = 0;
         let isApplyingRemoteSync = false;
+        let slaveScrollTimers = [];
 
         const CHORD_MENUS_CONFIG = [
             { label: 'C',   options: ['C', 'Csus2', 'Csus4', 'C7', 'Cmaj7', 'C/E'] },
@@ -914,31 +917,53 @@
             }
         }
 
-        function resolveSectionElement(sectionId) {
-            if (!sectionId) return null;
-            let el = document.getElementById(sectionId);
-            if (el) return el;
-            const suffixMatch = sectionId.match(/^[a-zA-Z0-9-]+-(\d+)-([A-Z0-9]+)$/);
-            if (suffixMatch) {
-                const idx = parseInt(suffixMatch[1], 10);
-                const cards = document.querySelectorAll('#chartContainer .section-card');
-                if (cards[idx]) return cards[idx];
+        function clearSlaveScrollTimers() {
+            slaveScrollTimers.forEach(t => clearTimeout(t));
+            slaveScrollTimers = [];
+        }
+
+        function resolveSectionElement(sectionId, sectionCode = null, sectionIndex = null) {
+            const cards = Array.from(document.querySelectorAll('#chartContainer .section-card'));
+            if (cards.length === 0) return null;
+
+            if (sectionId) {
+                const exact = document.getElementById(sectionId);
+                if (exact && exact.classList.contains('section-card')) return exact;
+
+                const idxMatch = sectionId.match(/sec-(\d+)/);
+                if (idxMatch) {
+                    const idx = parseInt(idxMatch[1], 10);
+                    if (cards[idx]) return cards[idx];
+                }
             }
+
+            if (typeof sectionIndex === 'number' && sectionIndex >= 0 && cards[sectionIndex]) {
+                return cards[sectionIndex];
+            }
+
+            if (sectionCode) {
+                const codeUpper = String(sectionCode).trim().toUpperCase();
+                const byCode = cards.find(c => (c.dataset.secCode || '').toUpperCase() === codeUpper);
+                if (byCode) return byCode;
+            }
+
             return null;
         }
 
-        function scheduleSlaveSectionScroll(sectionId) {
-            if (!sectionId) return;
+        function scheduleSlaveSectionScroll(sectionId, sectionCode = null, sectionIndex = null) {
+            clearSlaveScrollTimers();
             const runScroll = () => {
                 if (typeof resizeCanvas === 'function') {
                     resizeCanvas(true);
                 }
-                scrollToSection(sectionId);
+                scrollToSection(sectionId, sectionCode, sectionIndex);
             };
+
             requestAnimationFrame(() => {
                 runScroll();
-                setTimeout(runScroll, 120);
-                setTimeout(runScroll, 320);
+                slaveScrollTimers.push(setTimeout(runScroll, 100));
+                slaveScrollTimers.push(setTimeout(runScroll, 280));
+                slaveScrollTimers.push(setTimeout(runScroll, 550));
             });
         }
 
@@ -965,9 +990,15 @@
                     activeEventPlaylist = remotePlaylist;
                     activeEventIndex = data.activeEventIndex || 0;
 
+                    const secId = data.activeSectionId || null;
+                    const secCode = data.activeSectionCode || null;
+                    const secIdx = typeof data.activeSectionIndex === 'number' ? data.activeSectionIndex : null;
+
                     if (songChanged || playlistChanged || indexChanged) {
                         openSongReader(data.songId, {
-                            sectionId: data.activeSectionId || null,
+                            sectionId: secId,
+                            sectionCode: secCode,
+                            sectionIndex: secIdx,
                             scrollStamp: data.scrollStamp || 0,
                             fromRemote: true
                         });
@@ -975,16 +1006,18 @@
                         if (activeEventPlaylist) {
                             populateEventPlaylistBar();
                         }
-                        if (data.activeSectionId) {
-                            highlightActiveSection(data.activeSectionId);
+                        if (secId || secCode || secIdx !== null) {
+                            highlightActiveSection(secId, secCode, secIdx);
                         }
-                        if (data.activeSectionId && data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp) {
-                            lastHandledScrollStamp = data.scrollStamp;
-                            scheduleSlaveSectionScroll(data.activeSectionId);
+                        const stampChanged = data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp;
+                        const sectionChanged = secId && secId !== activeLiveSectionId;
+                        if ((secId || secCode || secIdx !== null) && (stampChanged || sectionChanged)) {
+                            if (data.scrollStamp) lastHandledScrollStamp = data.scrollStamp;
+                            scheduleSlaveSectionScroll(secId, secCode, secIdx);
                         }
                     }
                 } finally {
-                    setTimeout(() => { isApplyingRemoteSync = false; }, 260);
+                    setTimeout(() => { isApplyingRemoteSync = false; }, 350);
                 }
             });
         }
@@ -1001,6 +1034,8 @@
                     activeEventPlaylist: activeEventPlaylist || null,
                     activeEventIndex: activeEventIndex || 0,
                     activeSectionId: activeLiveSectionId || null,
+                    activeSectionCode: activeLiveSectionCode || null,
+                    activeSectionIndex: typeof activeLiveSectionIndex === 'number' ? activeLiveSectionIndex : null,
                     scrollStamp: scrollStamp,
                     masterUid: currentUser.uid,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1010,17 +1045,21 @@
             }
         }
 
-        function highlightActiveSection(sectionId) {
-            activeLiveSectionId = sectionId || null;
+        function highlightActiveSection(sectionId, sectionCode = null, sectionIndex = null) {
             document.querySelectorAll('.section-card').forEach(card => {
                 card.classList.remove('section-active-live');
             });
-            if (activeLiveSectionId) {
-                const targetCard = resolveSectionElement(activeLiveSectionId);
-                if (targetCard) {
-                    activeLiveSectionId = targetCard.id;
-                    targetCard.classList.add('section-active-live');
-                }
+
+            const targetCard = resolveSectionElement(sectionId, sectionCode, sectionIndex);
+            if (targetCard) {
+                activeLiveSectionId = targetCard.id;
+                activeLiveSectionCode = targetCard.dataset.secCode || sectionCode || null;
+                activeLiveSectionIndex = parseInt(targetCard.dataset.secIndex || '0', 10);
+                targetCard.classList.add('section-active-live');
+            } else {
+                activeLiveSectionId = sectionId || null;
+                activeLiveSectionCode = sectionCode || null;
+                activeLiveSectionIndex = typeof sectionIndex === 'number' ? sectionIndex : null;
             }
         }
 
@@ -1670,6 +1709,7 @@
         }
 
         async function showHomeView() {
+            clearSlaveScrollTimers();
             if (typeof saveSongAnnotations === 'function') {
                 await saveSongAnnotations(true);
             }
@@ -1682,6 +1722,8 @@
             activeEventPlaylist = null;
             activeEventIndex = 0;
             activeLiveSectionId = null;
+            activeLiveSectionCode = null;
+            activeLiveSectionIndex = null;
 
             if (floatingToolbar) floatingToolbar.classList.add('hidden');
             if (configMenu) configMenu.classList.add('hidden');
@@ -1727,6 +1769,8 @@
             if (isNaN(idx) || idx < 0 || idx >= activeEventPlaylist.length) return;
             activeEventIndex = idx;
             activeLiveSectionId = null;
+            activeLiveSectionCode = null;
+            activeLiveSectionIndex = null;
             openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
@@ -1739,6 +1783,8 @@
             activeEventPlaylist = ev.songIds;
             activeEventIndex = Math.max(0, Math.min(songIndex, ev.songIds.length - 1));
             activeLiveSectionId = null;
+            activeLiveSectionCode = null;
+            activeLiveSectionIndex = null;
             openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
@@ -1771,17 +1817,23 @@
             renderChart();
 
             if (syncOptions.fromRemote) {
-                const targetSec = syncOptions.sectionId || (currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null);
-                highlightActiveSection(targetSec);
+                const firstSec = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0] : null;
+                const targetSecId = syncOptions.sectionId || (firstSec ? firstSec.id : null);
+                const targetSecCode = syncOptions.sectionCode || (firstSec ? firstSec.code : null);
+                const targetSecIdx = typeof syncOptions.sectionIndex === 'number' ? syncOptions.sectionIndex : (firstSec ? 0 : null);
+
+                highlightActiveSection(targetSecId, targetSecCode, targetSecIdx);
                 if (syncOptions.scrollStamp) {
                     lastHandledScrollStamp = syncOptions.scrollStamp;
                 }
-                if (targetSec) {
-                    scheduleSlaveSectionScroll(targetSec);
-                }
+                scheduleSlaveSectionScroll(targetSecId, targetSecCode, targetSecIdx);
             } else {
-                const firstSecId = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null;
-                highlightActiveSection(firstSecId);
+                const firstSec = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0] : null;
+                const firstSecId = firstSec ? firstSec.id : null;
+                const firstSecCode = firstSec ? firstSec.code : null;
+                const firstSecIdx = firstSec ? 0 : null;
+
+                highlightActiveSection(firstSecId, firstSecCode, firstSecIdx);
                 window.scrollTo({ top: 0, behavior: 'instant' });
                 if (liveRole === 'master' && !isApplyingRemoteSync) {
                     pushLiveState(true);
@@ -1791,8 +1843,12 @@
             requestAnimationFrame(() => {
                 setTimeout(() => {
                     loadSongAnnotations(currentSong.id);
-                    if (syncOptions.fromRemote && syncOptions.sectionId) {
-                        scheduleSlaveSectionScroll(syncOptions.sectionId);
+                    if (syncOptions.fromRemote) {
+                        scheduleSlaveSectionScroll(
+                            syncOptions.sectionId || null,
+                            syncOptions.sectionCode || null,
+                            typeof syncOptions.sectionIndex === 'number' ? syncOptions.sectionIndex : null
+                        );
                     }
                 }, 90);
             });
@@ -1809,6 +1865,8 @@
             activeEventPlaylist = ev.songIds;
             activeEventIndex = 0;
             activeLiveSectionId = null;
+            activeLiveSectionCode = null;
+            activeLiveSectionIndex = null;
             openSongReader(activeEventPlaylist[activeEventIndex]);
         }
 
@@ -1817,6 +1875,8 @@
             if (activeEventIndex < activeEventPlaylist.length - 1) {
                 activeEventIndex++;
                 activeLiveSectionId = null;
+                activeLiveSectionCode = null;
+                activeLiveSectionIndex = null;
                 openSongReader(activeEventPlaylist[activeEventIndex]);
             } else { alert("¡Has llegado al final del evento!"); }
         }
@@ -1826,6 +1886,8 @@
             if (activeEventIndex > 0) {
                 activeEventIndex--;
                 activeLiveSectionId = null;
+                activeLiveSectionCode = null;
+                activeLiveSectionIndex = null;
                 openSongReader(activeEventPlaylist[activeEventIndex]);
             }
         }
@@ -1841,7 +1903,7 @@
                 badgeBtn.type = 'button';
                 badgeBtn.onclick = (e) => {
                     e.stopPropagation();
-                    triggerSectionNavigation(secDomId);
+                    triggerSectionNavigation(secDomId, sec.code, index);
                 };
                 const colorClasses = getBadgeClasses(sec.type);
                 badgeBtn.className = `flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition transform active:scale-95 whitespace-nowrap shadow-sm ${colorClasses}`;
@@ -1886,12 +1948,15 @@
 
                 const card = document.createElement('div');
                 card.id = secDomId;
+                card.dataset.secCode = sec.code || '';
+                card.dataset.secIndex = String(index);
+
                 const activeClass = activeLiveSectionId === secDomId ? 'section-active-live' : '';
                 card.className = `section-card ${activeClass} bg-stage-card border border-stage-cardBorder rounded-2xl p-4 md:p-5 shadow-sm scroll-mt-20 transition-all`;
                 card.onclick = (e) => {
                     e.stopPropagation();
                     if (liveRole === 'master' && !isApplyingRemoteSync) {
-                        highlightActiveSection(secDomId);
+                        highlightActiveSection(secDomId, sec.code, index);
                         pushLiveState(true);
                     }
                 };
@@ -2099,17 +2164,16 @@
         document.getElementById('scrollMenu').addEventListener('click', (e) => e.stopPropagation());
         document.getElementById('syncMenu').addEventListener('click', (e) => e.stopPropagation());
 
-        function triggerSectionNavigation(id) {
-            highlightActiveSection(id);
-            scrollToSection(id);
+        function triggerSectionNavigation(id, code = null, index = null) {
+            highlightActiveSection(id, code, index);
+            scrollToSection(id, code, index);
             if (liveRole === 'master' && !isApplyingRemoteSync) {
                 pushLiveState(true);
             }
         }
 
-        function scrollToSection(id) {
-            if (!id) return;
-            const el = resolveSectionElement(id);
+        function scrollToSection(id, code = null, index = null) {
+            const el = resolveSectionElement(id, code, index);
             if (!el) return;
 
             const header = document.querySelector('#readerView header');
