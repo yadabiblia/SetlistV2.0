@@ -957,12 +957,12 @@
                             fromRemote: true
                         });
                     } else {
-                        if (data.activeSectionId && data.activeSectionId !== activeLiveSectionId) {
+                        if (data.activeSectionId) {
                             highlightActiveSection(data.activeSectionId);
                         }
-                        if (data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp && data.activeSectionId) {
+                        if (data.activeSectionId && data.scrollStamp && data.scrollStamp !== lastHandledScrollStamp) {
                             lastHandledScrollStamp = data.scrollStamp;
-                            scrollToSection(data.activeSectionId);
+                            requestAnimationFrame(() => scrollToSection(data.activeSectionId));
                         }
                     }
                 } finally {
@@ -993,13 +993,15 @@
         }
 
         function highlightActiveSection(sectionId) {
-            activeLiveSectionId = sectionId;
+            activeLiveSectionId = sectionId || null;
             document.querySelectorAll('.section-card').forEach(card => {
                 card.classList.remove('section-active-live');
             });
-            if (sectionId) {
-                const targetCard = document.getElementById(sectionId);
-                if (targetCard) targetCard.classList.add('section-active-live');
+            if (activeLiveSectionId) {
+                const targetCard = document.getElementById(activeLiveSectionId);
+                if (targetCard) {
+                    targetCard.classList.add('section-active-live');
+                }
             }
         }
 
@@ -1774,7 +1776,7 @@
                 highlightActiveSection(syncOptions.sectionId || null);
                 if (syncOptions.sectionId && syncOptions.scrollStamp && syncOptions.scrollStamp !== lastHandledScrollStamp) {
                     lastHandledScrollStamp = syncOptions.scrollStamp;
-                    setTimeout(() => scrollToSection(syncOptions.sectionId), 140);
+                    setTimeout(() => scrollToSection(syncOptions.sectionId), 200);
                 }
             } else {
                 const firstSecId = currentSong.sections && currentSong.sections[0] ? currentSong.sections[0].id : null;
@@ -2089,8 +2091,19 @@
         }
 
         function scrollToSection(id) {
+            if (!id) return;
             const el = document.getElementById(id);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (!el) return;
+
+            const header = document.querySelector('#readerView header');
+            const headerOffset = header ? header.getBoundingClientRect().height + 14 : 84;
+            const elementTop = el.getBoundingClientRect().top + window.scrollY;
+            const targetY = Math.max(0, elementTop - headerOffset);
+
+            window.scrollTo({
+                top: targetY,
+                behavior: 'smooth'
+            });
         }
 
         // --- FUNCIONES DE EDICIÓN Y CREACIÓN DE CANCIONES ---
