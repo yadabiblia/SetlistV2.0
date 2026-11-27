@@ -730,7 +730,11 @@
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div class="space-y-2">
-                    <label class="text-zinc-400 font-semibold block">Toca para agregar en orden</label>
+                    <label class="text-zinc-400 font-semibold block">Buscar y tocar para agregar en orden</label>
+                    <div class="relative">
+                        <input type="text" id="eventSongSearchInput" oninput="renderEventSongPickers()" placeholder="Buscar canción, artista o tono..." class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 pl-9 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500">
+                        <svg class="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
                     <div id="eventSongsSelector" class="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 max-h-56 overflow-y-auto space-y-1.5"></div>
                 </div>
                 <div class="space-y-2">
@@ -738,7 +742,7 @@
                         <label class="text-indigo-300 font-semibold block">Orden del Setlist (<span id="eventOrderedCount">0</span>)</label>
                         <button type="button" onclick="clearEventOrderedSongs()" class="text-[10px] font-mono text-zinc-400 hover:text-red-400 transition">Limpiar</button>
                     </div>
-                    <div id="eventOrderedSongsList" class="bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 max-h-56 overflow-y-auto space-y-1.5"></div>
+                    <div id="eventOrderedSongsList" class="bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 max-h-64 overflow-y-auto space-y-1.5"></div>
                 </div>
             </div>
             <div class="flex items-center justify-end gap-2 pt-2 text-xs border-t border-stage-cardBorder">
@@ -2556,21 +2560,39 @@
             const selector = document.getElementById('eventSongsSelector');
             const orderedList = document.getElementById('eventOrderedSongsList');
             const orderedCount = document.getElementById('eventOrderedCount');
+            const searchInput = document.getElementById('eventSongSearchInput');
             if (!selector || !orderedList) return;
 
+            const query = (searchInput ? searchInput.value : '').trim().toLowerCase();
             const allSongs = getEffectiveSongs();
             if (orderedCount) orderedCount.innerText = String(eventSelectedOrder.length);
 
-            selector.innerHTML = allSongs.map(song => {
-                const pos = eventSelectedOrder.indexOf(song.id);
-                const isAdded = pos !== -1;
-                return `
-                    <button type="button" onclick="toggleSongInEventOrder('${song.id}')" class="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded-lg border transition ${isAdded ? 'bg-indigo-950/50 border-indigo-500/50 text-indigo-200' : 'bg-zinc-950/60 hover:bg-zinc-800/80 border-zinc-800/80 text-zinc-200'}">
-                        <span class="truncate font-medium">${song.title}</span>
-                        <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isAdded ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400'}">${isAdded ? `#${pos + 1} ✓` : '+ Agregar'}</span>
-                    </button>
-                `;
-            }).join('');
+            const filteredSongs = query
+                ? allSongs.filter(s =>
+                    (s.title || '').toLowerCase().includes(query) ||
+                    (s.artist || '').toLowerCase().includes(query) ||
+                    (s.originalKey || '').toLowerCase().includes(query)
+                )
+                : allSongs;
+
+            if (filteredSongs.length === 0) {
+                selector.innerHTML = `<p class="text-[11px] text-zinc-500 italic text-center py-6">No hay canciones que coincidan con "${escapeHtml(query)}".</p>`;
+            } else {
+                selector.innerHTML = filteredSongs.map(song => {
+                    const pos = eventSelectedOrder.indexOf(song.id);
+                    const isAdded = pos !== -1;
+                    const keyBadge = song.originalKey ? `<span class="text-[10px] font-mono text-zinc-400">${song.originalKey}</span>` : '';
+                    return `
+                        <button type="button" onclick="toggleSongInEventOrder('${song.id}')" class="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded-lg border transition ${isAdded ? 'bg-indigo-950/50 border-indigo-500/50 text-indigo-200' : 'bg-zinc-950/60 hover:bg-zinc-800/80 border-zinc-800/80 text-zinc-200'}">
+                            <div class="min-w-0">
+                                <div class="truncate font-medium">${song.title}</div>
+                                <div class="truncate text-[10px] text-zinc-500">${song.artist || 'Sin artista'} ${keyBadge ? '• ' + song.originalKey : ''}</div>
+                            </div>
+                            <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded shrink-0 ${isAdded ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400'}">${isAdded ? `#${pos + 1} ✓` : '+ Agregar'}</span>
+                        </button>
+                    `;
+                }).join('');
+            }
 
             if (eventSelectedOrder.length === 0) {
                 orderedList.innerHTML = `<p class="text-[11px] text-zinc-500 italic text-center py-6">Toca canciones de la izquierda para armar tu setlist en orden.</p>`;
@@ -2628,6 +2650,8 @@
             const nameInput = document.getElementById('eventName');
             const dateInput = document.getElementById('eventDate');
             const notesInput = document.getElementById('eventNotes');
+            const searchInput = document.getElementById('eventSongSearchInput');
+            if (searchInput) searchInput.value = "";
             eventSelectedOrder = [];
 
             const targetEv = eventId
@@ -2649,7 +2673,11 @@
             document.getElementById('eventModal').classList.remove('hidden');
         }
 
-        function closeEventModal() { document.getElementById('eventModal').classList.add('hidden'); }
+        function closeEventModal() {
+            const searchInput = document.getElementById('eventSongSearchInput');
+            if (searchInput) searchInput.value = "";
+            document.getElementById('eventModal').classList.add('hidden');
+        }
 
         async function saveEventData() {
             const editId = document.getElementById('editEventId').value;
