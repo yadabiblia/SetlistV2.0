@@ -707,12 +707,13 @@
 
     <!-- MODAL DE EVENTO -->
     <div id="eventModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
-        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-stage-card border border-stage-cardBorder rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
             <div class="flex items-center justify-between border-b border-stage-cardBorder pb-3">
                 <h3 id="eventModalTitle" class="text-sm font-black uppercase tracking-wider text-white">Nuevo Evento / Setlist</h3>
                 <button onclick="closeEventModal()" class="text-zinc-400 hover:text-white text-lg font-bold">&times;</button>
             </div>
             <input type="hidden" id="editEventId">
+            <input type="hidden" id="editEventSource" value="personal">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div>
                     <label class="text-zinc-400 font-semibold block mb-1">Nombre del Evento</label>
@@ -727,11 +728,20 @@
                 <label class="text-zinc-400 font-semibold block mb-1">Notas del Evento</label>
                 <input type="text" id="eventNotes" placeholder="Ej. Llegar 30 min antes" class="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500">
             </div>
-            <div class="text-xs space-y-2">
-                <label class="text-zinc-400 font-semibold block">Seleccionar Canciones</label>
-                <div id="eventSongsSelector" class="bg-zinc-900 border border-zinc-800 rounded-xl p-3 max-h-48 overflow-y-auto space-y-2"></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div class="space-y-2">
+                    <label class="text-zinc-400 font-semibold block">Toca para agregar en orden</label>
+                    <div id="eventSongsSelector" class="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 max-h-56 overflow-y-auto space-y-1.5"></div>
+                </div>
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-indigo-300 font-semibold block">Orden del Setlist (<span id="eventOrderedCount">0</span>)</label>
+                        <button type="button" onclick="clearEventOrderedSongs()" class="text-[10px] font-mono text-zinc-400 hover:text-red-400 transition">Limpiar</button>
+                    </div>
+                    <div id="eventOrderedSongsList" class="bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 max-h-56 overflow-y-auto space-y-1.5"></div>
+                </div>
             </div>
-            <div class="flex items-center justify-end gap-2 pt-2 text-xs">
+            <div class="flex items-center justify-end gap-2 pt-2 text-xs border-t border-stage-cardBorder">
                 <button onclick="closeEventModal()" class="px-4 py-2.5 rounded-xl bg-zinc-800 font-bold text-zinc-300 hover:bg-zinc-700 transition">Cancelar</button>
                 <button onclick="saveEventData()" class="px-5 py-2.5 rounded-xl bg-indigo-600 font-bold text-white hover:bg-indigo-500 transition shadow-sm">Guardar Evento</button>
             </div>
@@ -754,6 +764,7 @@
         let eventsFilterScope = 'all'; // 'all' | 'band'
         let activeEventPlaylist = null;
         let activeEventIndex = 0;
+        let eventSelectedOrder = [];
 
         // --- ESTADO DE SINCRONIZACIÓN MAESTRO / ESCLAVO ---
         let liveRole = localStorage.getItem('setlist_live_role') || 'off';
@@ -1319,6 +1330,22 @@
             }
         }
 
+        async function deleteBandPublishedEvent(eventId) {
+            if (!currentUser || !bandData || !isCurrentUserBandLeader()) {
+                alert("Solo el Líder de la banda puede quitar eventos publicados.");
+                return;
+            }
+            const ev = bandPublishedEvents[eventId];
+            if (!ev) return;
+            if (!confirm(`¿Quitar "${ev.name}" de los eventos de la banda?`)) return;
+
+            try {
+                await db.collection("bands").doc(bandData.code).collection("published_events").doc(eventId).delete();
+            } catch (e) {
+                alert("Error al quitar evento de la banda: " + e.message);
+            }
+        }
+
         function renderBandView() {
             const panel = document.getElementById('bandPanel');
             if (!panel) return;
@@ -1662,11 +1689,18 @@
                 ? `
                     <div class="flex flex-wrap items-center gap-1.5">
                         ${bandData && amLeader ? `<button onclick="publishEventToBand('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 transition text-xs font-semibold border border-sky-800/60">Publicar a Banda</button>` : ''}
-                        <button onclick="openEventModal('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
+                        <button onclick="openEventModal('${ev.id}', 'personal')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
                         <button onclick="deleteEventAction('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
                     </div>
                 `
-                : `<span class="text-[10px] font-mono text-zinc-400">${ev.date || 'Evento de banda'}</span>`;
+                : (amLeader
+                    ? `
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button onclick="openEventModal('${ev.id}', 'band')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
+                            <button onclick="deleteBandPublishedEvent('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Quitar de Banda</button>
+                        </div>
+                    `
+                    : `<span class="text-[10px] font-mono text-zinc-400">${ev.date || 'Evento de banda'}</span>`);
 
             const borderHover = source === 'band' ? 'hover:border-sky-500/50' : 'hover:border-indigo-500/50';
             const btnColor = source === 'band' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-indigo-600 hover:bg-indigo-500';
@@ -2518,36 +2552,100 @@
 
         function closeCreateModal() { document.getElementById('createModal').classList.add('hidden'); }
 
-        function openEventModal(eventId = null) {
+        function renderEventSongPickers() {
+            const selector = document.getElementById('eventSongsSelector');
+            const orderedList = document.getElementById('eventOrderedSongsList');
+            const orderedCount = document.getElementById('eventOrderedCount');
+            if (!selector || !orderedList) return;
+
+            const allSongs = getEffectiveSongs();
+            if (orderedCount) orderedCount.innerText = String(eventSelectedOrder.length);
+
+            selector.innerHTML = allSongs.map(song => {
+                const pos = eventSelectedOrder.indexOf(song.id);
+                const isAdded = pos !== -1;
+                return `
+                    <button type="button" onclick="toggleSongInEventOrder('${song.id}')" class="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded-lg border transition ${isAdded ? 'bg-indigo-950/50 border-indigo-500/50 text-indigo-200' : 'bg-zinc-950/60 hover:bg-zinc-800/80 border-zinc-800/80 text-zinc-200'}">
+                        <span class="truncate font-medium">${song.title}</span>
+                        <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded ${isAdded ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400'}">${isAdded ? `#${pos + 1} ✓` : '+ Agregar'}</span>
+                    </button>
+                `;
+            }).join('');
+
+            if (eventSelectedOrder.length === 0) {
+                orderedList.innerHTML = `<p class="text-[11px] text-zinc-500 italic text-center py-6">Toca canciones de la izquierda para armar tu setlist en orden.</p>`;
+                return;
+            }
+
+            orderedList.innerHTML = eventSelectedOrder.map((songId, idx) => {
+                const found = allSongs.find(s => s.id === songId);
+                const title = found ? found.title : 'Canción eliminada';
+                return `
+                    <div class="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5">
+                        <span class="truncate font-medium text-white"><strong class="text-indigo-400 font-mono mr-1.5">${idx + 1}.</strong>${title}</span>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button type="button" onclick="moveEventSong(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-200 font-mono text-[11px]" title="Subir">↑</button>
+                            <button type="button" onclick="moveEventSong(${idx}, 1)" ${idx === eventSelectedOrder.length - 1 ? 'disabled' : ''} class="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 text-zinc-200 font-mono text-[11px]" title="Bajar">↓</button>
+                            <button type="button" onclick="removeEventSongAt(${idx})" class="px-1.5 py-0.5 rounded bg-red-950/50 hover:bg-red-900/70 text-red-300 font-mono text-[11px]" title="Quitar">✕</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleSongInEventOrder(songId) {
+            const idx = eventSelectedOrder.indexOf(songId);
+            if (idx === -1) {
+                eventSelectedOrder.push(songId);
+            } else {
+                eventSelectedOrder.splice(idx, 1);
+            }
+            renderEventSongPickers();
+        }
+
+        function moveEventSong(index, delta) {
+            const target = index + delta;
+            if (target < 0 || target >= eventSelectedOrder.length) return;
+            const temp = eventSelectedOrder[index];
+            eventSelectedOrder[index] = eventSelectedOrder[target];
+            eventSelectedOrder[target] = temp;
+            renderEventSongPickers();
+        }
+
+        function removeEventSongAt(index) {
+            eventSelectedOrder.splice(index, 1);
+            renderEventSongPickers();
+        }
+
+        function clearEventOrderedSongs() {
+            eventSelectedOrder = [];
+            renderEventSongPickers();
+        }
+
+        function openEventModal(eventId = null, source = 'personal') {
             document.getElementById('editEventId').value = eventId || "";
+            document.getElementById('editEventSource').value = source || "personal";
             const nameInput = document.getElementById('eventName');
             const dateInput = document.getElementById('eventDate');
             const notesInput = document.getElementById('eventNotes');
-            let selectedSongIds = [];
+            eventSelectedOrder = [];
 
-            if (eventId && userEvents[eventId]) {
-                const ev = userEvents[eventId];
-                document.getElementById('eventModalTitle').innerText = "Editar Evento";
-                nameInput.value = ev.name || "";
-                dateInput.value = ev.date || "";
-                notesInput.value = ev.notes || "";
-                selectedSongIds = ev.songIds || [];
+            const targetEv = eventId
+                ? (source === 'band' ? bandPublishedEvents[eventId] : userEvents[eventId])
+                : null;
+
+            if (targetEv) {
+                document.getElementById('eventModalTitle').innerText = source === 'band' ? "Editar Evento de Banda" : "Editar Evento";
+                nameInput.value = targetEv.name || "";
+                dateInput.value = targetEv.date || "";
+                notesInput.value = targetEv.notes || "";
+                eventSelectedOrder = Array.isArray(targetEv.songIds) ? [...targetEv.songIds] : [];
             } else {
                 document.getElementById('eventModalTitle').innerText = "Nuevo Evento";
                 nameInput.value = ""; dateInput.value = ""; notesInput.value = "";
             }
 
-            const selector = document.getElementById('eventSongsSelector');
-            selector.innerHTML = '';
-            getEffectiveSongs().forEach(song => {
-                const isChecked = selectedSongIds.includes(song.id) ? 'checked' : '';
-                selector.innerHTML += `
-                    <label class="flex items-center gap-2 cursor-pointer hover:bg-zinc-800/50 p-1.5 rounded-lg transition">
-                        <input type="checkbox" value="${song.id}" ${isChecked} class="event-song-checkbox rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0">
-                        <span class="text-white font-medium">${song.title}</span>
-                    </label>
-                `;
-            });
+            renderEventSongPickers();
             document.getElementById('eventModal').classList.remove('hidden');
         }
 
@@ -2555,16 +2653,28 @@
 
         async function saveEventData() {
             const editId = document.getElementById('editEventId').value;
+            const source = document.getElementById('editEventSource').value || 'personal';
             const name = document.getElementById('eventName').value.trim();
             const date = document.getElementById('eventDate').value.trim();
             const notes = document.getElementById('eventNotes').value.trim();
             if (!name) { alert("Ingresa un nombre"); return; }
-            const songIds = Array.from(document.querySelectorAll('.event-song-checkbox:checked')).map(cb => cb.value);
+            const songIds = [...eventSelectedOrder];
 
             try {
-                const data = { name, date, notes, songIds };
-                if (editId) await db.collection("users").doc(currentUser.uid).collection("events").doc(editId).set(data);
-                else await db.collection("users").doc(currentUser.uid).collection("events").add(data);
+                if (source === 'band') {
+                    if (!bandData || !isCurrentUserBandLeader()) {
+                        alert("Solo el Líder de la banda puede editar eventos publicados.");
+                        return;
+                    }
+                    await db.collection("bands").doc(bandData.code).collection("published_events").doc(editId).set({
+                        name, date, notes, songIds,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                } else {
+                    const data = { name, date, notes, songIds };
+                    if (editId) await db.collection("users").doc(currentUser.uid).collection("events").doc(editId).set(data);
+                    else await db.collection("users").doc(currentUser.uid).collection("events").add(data);
+                }
                 closeEventModal();
             } catch (e) { alert("Error: " + e.message); }
         }
