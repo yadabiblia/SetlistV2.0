@@ -108,7 +108,6 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
 
-        /* Estilos del editor y previsualización */
         .editor-mono-block {
             white-space: pre;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
@@ -201,7 +200,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 <div class="bg-stage-card border border-stage-cardBorder rounded-xl p-1 flex items-center gap-1 text-xs font-semibold">
                     <button id="tabSongsBtn" onclick="switchHomeTab('songs')" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition">Repertorio</button>
-                    <button id="tabEventsBtn" onclick="switchHomeTab('events')" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Eventos</button>
+                    <button id="tabEventsBtn" onclick="switchHomeTab('events', 'all')" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Eventos</button>
                     <button id="tabBandBtn" onclick="switchHomeTab('band')" class="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Banda</button>
                 </div>
                 <button id="primaryActionBtn" onclick="openCreateModal()" class="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-zinc-100 hover:bg-white text-xs font-bold text-zinc-900 transition shadow-sm active:scale-95">
@@ -218,7 +217,7 @@
             <svg class="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         </div>
         <div id="songListGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-        <div id="eventListGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 hidden"></div>
+        <div id="eventListContainer" class="space-y-8 hidden"></div>
         <div id="bandPanel" class="hidden space-y-6"></div>
     </div>
 
@@ -752,6 +751,7 @@
         let currentTranspose = 0;
         let currentCapo = 0;
         let currentHomeTab = 'songs';
+        let eventsFilterScope = 'all'; // 'all' | 'band'
         let activeEventPlaylist = null;
         let activeEventIndex = 0;
 
@@ -1399,8 +1399,8 @@
                         </div>
                         <p class="text-xs text-zinc-400 mt-1">Tu rol: <strong class="${amLeader ? 'text-amber-400' : 'text-sky-400'}">${amLeader ? 'Líder' : 'Músico'}</strong> • Eventos publicados: <strong class="text-white">${publishedList.length}</strong></p>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="switchHomeTab('events')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white transition">Ver Eventos de la Banda</button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="switchHomeTab('events', 'band')" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white transition">Ver Eventos de la Banda</button>
                         <button onclick="leaveBandGroup()" class="px-3.5 py-2 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-bold border border-red-900/40 transition">Salir</button>
                     </div>
                 </div>
@@ -1427,14 +1427,20 @@
             return [...baseSongs, ...extraCustom];
         }
 
-        function switchHomeTab(tab) {
+        function switchHomeTab(tab, scope = 'all') {
             currentHomeTab = tab;
+            if (tab === 'events') {
+                eventsFilterScope = scope;
+            } else {
+                eventsFilterScope = 'all';
+            }
+
             const songsBtn = document.getElementById('tabSongsBtn');
             const eventsBtn = document.getElementById('tabEventsBtn');
             const bandBtn = document.getElementById('tabBandBtn');
             const searchContainer = document.getElementById('searchContainer');
             const songGrid = document.getElementById('songListGrid');
-            const eventGrid = document.getElementById('eventListGrid');
+            const eventContainer = document.getElementById('eventListContainer');
             const bandPanel = document.getElementById('bandPanel');
             const btnText = document.getElementById('primaryBtnText');
             const actionBtn = document.getElementById('primaryActionBtn');
@@ -1447,7 +1453,7 @@
                 songsBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
                 searchContainer.classList.remove('hidden');
                 songGrid.classList.remove('hidden');
-                eventGrid.classList.add('hidden');
+                eventContainer.classList.add('hidden');
                 bandPanel.classList.add('hidden');
                 btnText.innerText = "Nueva Canción";
                 actionBtn.setAttribute("onclick", "openCreateModal()");
@@ -1456,7 +1462,7 @@
                 eventsBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
                 searchContainer.classList.add('hidden');
                 songGrid.classList.add('hidden');
-                eventGrid.classList.remove('hidden');
+                eventContainer.classList.remove('hidden');
                 bandPanel.classList.add('hidden');
                 btnText.innerText = "Nuevo Evento";
                 actionBtn.setAttribute("onclick", "openEventModal()");
@@ -1465,12 +1471,17 @@
                 bandBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white transition";
                 searchContainer.classList.add('hidden');
                 songGrid.classList.add('hidden');
-                eventGrid.classList.add('hidden');
+                eventContainer.classList.add('hidden');
                 bandPanel.classList.remove('hidden');
                 btnText.innerText = "Nueva Canción";
                 actionBtn.setAttribute("onclick", "openCreateModal()");
                 renderBandView();
             }
+        }
+
+        function setEventsScope(scope) {
+            eventsFilterScope = scope;
+            renderEventsView();
         }
 
         function parseSectionTag(rawTag) {
@@ -1623,62 +1634,45 @@
             });
         }
 
-        function renderEventsView() {
-            const grid = document.getElementById('eventListGrid');
-            grid.innerHTML = '';
-            const personalEvents = Object.values(userEvents);
-            const bandEvents = Object.values(bandPublishedEvents);
-            const allEvents = [
-                ...personalEvents.map(ev => ({ ...ev, source: 'personal' })),
-                ...bandEvents.map(ev => ({ ...ev, source: 'band' }))
-            ];
-
-            if (allEvents.length === 0) {
-                grid.innerHTML = `<p class="text-xs text-zinc-500 col-span-full text-center py-10">No hay eventos creados todavía.</p>`;
-                return;
+        function buildEventCardHtml(ev, source, songsMap, amLeader) {
+            let songsHtml = '';
+            if (ev.songIds && ev.songIds.length > 0) {
+                songsHtml = `<div class="space-y-1 my-2 bg-zinc-900/50 p-2 rounded-xl border border-zinc-800 text-xs">`;
+                ev.songIds.forEach((sId, idx) => {
+                    const found = songsMap.find(s => s.id === sId);
+                    const songTitle = found ? found.title : 'Canción eliminada';
+                    const songKey = found && found.originalKey ? `<span class="text-[10px] font-mono text-indigo-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">${found.originalKey}</span>` : '';
+                    songsHtml += `
+                        <button type="button" onclick="openSongFromEvent('${ev.id}', '${source}', ${idx})" class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 hover:text-white font-medium transition group">
+                            <span class="truncate"><strong class="text-zinc-500 font-mono mr-1">${idx + 1}.</strong>${songTitle}</span>
+                            <span class="flex items-center gap-1.5 shrink-0">${songKey}<span class="text-[10px] text-indigo-400 opacity-80 group-hover:opacity-100">Abrir →</span></span>
+                        </button>
+                    `;
+                });
+                songsHtml += `</div>`;
+            } else {
+                songsHtml = `<p class="text-[11px] text-zinc-500 italic my-2">Sin canciones asignadas</p>`;
             }
 
-            const songsMap = getEffectiveSongs();
-            const amLeader = isCurrentUserBandLeader();
+            const sourceBadge = source === 'band'
+                ? `<span class="text-[10px] font-mono font-bold bg-sky-950/80 text-sky-300 px-2 py-0.5 rounded-lg border border-sky-800/60">${ev.bandName || 'Banda'}</span>`
+                : `<span class="text-[10px] font-mono font-bold bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded-lg border border-indigo-800">${ev.date || 'Personal'}</span>`;
 
-            allEvents.forEach(ev => {
-                const card = document.createElement('div');
-                card.className = "bg-stage-card border border-stage-cardBorder rounded-2xl p-5 hover:border-indigo-500/50 transition flex flex-col justify-between gap-4 shadow-sm";
+            const actionsHtml = source === 'personal'
+                ? `
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        ${bandData && amLeader ? `<button onclick="publishEventToBand('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 transition text-xs font-semibold border border-sky-800/60">Publicar a Banda</button>` : ''}
+                        <button onclick="openEventModal('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
+                        <button onclick="deleteEventAction('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
+                    </div>
+                `
+                : `<span class="text-[10px] font-mono text-zinc-400">${ev.date || 'Evento de banda'}</span>`;
 
-                let songsHtml = '';
-                if (ev.songIds && ev.songIds.length > 0) {
-                    songsHtml = `<div class="space-y-1 my-2 bg-zinc-900/50 p-2 rounded-xl border border-zinc-800 text-xs">`;
-                    ev.songIds.forEach((sId, idx) => {
-                        const found = songsMap.find(s => s.id === sId);
-                        const songTitle = found ? found.title : 'Canción eliminada';
-                        const songKey = found && found.originalKey ? `<span class="text-[10px] font-mono text-indigo-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">${found.originalKey}</span>` : '';
-                        songsHtml += `
-                            <button type="button" onclick="openSongFromEvent('${ev.id}', '${ev.source}', ${idx})" class="w-full flex items-center justify-between gap-2 text-left px-2 py-1.5 rounded-lg hover:bg-zinc-800/80 text-zinc-200 hover:text-white font-medium transition group">
-                                <span class="truncate"><strong class="text-zinc-500 font-mono mr-1">${idx + 1}.</strong>${songTitle}</span>
-                                <span class="flex items-center gap-1.5 shrink-0">${songKey}<span class="text-[10px] text-indigo-400 opacity-80 group-hover:opacity-100">Abrir →</span></span>
-                            </button>
-                        `;
-                    });
-                    songsHtml += `</div>`;
-                } else {
-                    songsHtml = `<p class="text-[11px] text-zinc-500 italic my-2">Sin canciones asignadas</p>`;
-                }
+            const borderHover = source === 'band' ? 'hover:border-sky-500/50' : 'hover:border-indigo-500/50';
+            const btnColor = source === 'band' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-indigo-600 hover:bg-indigo-500';
 
-                const sourceBadge = ev.source === 'band'
-                    ? `<span class="text-[10px] font-mono font-bold bg-sky-950/80 text-sky-300 px-2 py-0.5 rounded-lg border border-sky-800/60">Banda</span>`
-                    : `<span class="text-[10px] font-mono font-bold bg-indigo-950 text-indigo-400 px-2 py-0.5 rounded-lg border border-indigo-800">${ev.date || 'Sin fecha'}</span>`;
-
-                const actionsHtml = ev.source === 'personal'
-                    ? `
-                        <div class="flex flex-wrap items-center gap-1.5">
-                            ${bandData && amLeader ? `<button onclick="publishEventToBand('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 transition text-xs font-semibold border border-sky-800/60">Publicar a Banda</button>` : ''}
-                            <button onclick="openEventModal('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 transition text-xs font-medium border border-zinc-800">Editar</button>
-                            <button onclick="deleteEventAction('${ev.id}')" class="px-2.5 py-1 rounded-lg bg-red-950/30 hover:bg-red-900/50 text-red-400 transition text-xs font-medium border border-red-900/30">Eliminar</button>
-                        </div>
-                    `
-                    : `<span class="text-[10px] font-mono text-zinc-400">${ev.date || 'Evento de banda'}</span>`;
-
-                card.innerHTML = `
+            return `
+                <div class="bg-stage-card border border-stage-cardBorder rounded-2xl p-5 ${borderHover} transition flex flex-col justify-between gap-4 shadow-sm">
                     <div>
                         <div class="flex items-start justify-between gap-2">
                             <h3 class="text-base font-bold text-white">${ev.name}</h3>
@@ -1688,14 +1682,98 @@
                         ${songsHtml}
                     </div>
                     <div class="flex flex-wrap items-center justify-between gap-2 border-t border-stage-cardBorder pt-3 text-xs">
-                        <button onclick="startEventPlaylist('${ev.id}', '${ev.source}')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition shadow-sm flex items-center gap-1.5">
+                        <button onclick="startEventPlaylist('${ev.id}', '${source}')" class="px-3 py-1.5 rounded-lg ${btnColor} text-white font-bold transition shadow-sm flex items-center gap-1.5">
                             Iniciar Evento
                         </button>
                         ${actionsHtml}
                     </div>
-                `;
-                grid.appendChild(card);
+                </div>
+            `;
+        }
+
+        function getSortedBandEvents() {
+            return Object.values(bandPublishedEvents).sort((a, b) => {
+                const ta = a.publishedAt && a.publishedAt.seconds ? a.publishedAt.seconds : 0;
+                const tb = b.publishedAt && b.publishedAt.seconds ? b.publishedAt.seconds : 0;
+                if (tb !== ta) return tb - ta;
+                return (a.name || '').localeCompare(b.name || '');
             });
+        }
+
+        function getSortedPersonalEvents() {
+            return Object.values(userEvents).sort((a, b) => {
+                return (a.name || '').localeCompare(b.name || '');
+            });
+        }
+
+        function renderEventsView() {
+            const container = document.getElementById('eventListContainer');
+            if (!container) return;
+
+            const songsMap = getEffectiveSongs();
+            const amLeader = isCurrentUserBandLeader();
+            const bandList = getSortedBandEvents();
+            const personalList = getSortedPersonalEvents();
+
+            const filterBarHtml = `
+                <div class="flex flex-wrap items-center justify-between gap-3 bg-stage-card/70 border border-stage-cardBorder rounded-2xl px-4 py-3">
+                    <div class="flex items-center gap-2 text-xs">
+                        <button onclick="setEventsScope('all')" class="px-3 py-1.5 rounded-lg font-bold transition ${eventsFilterScope === 'all' ? 'bg-indigo-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'}">
+                            Todos (${bandList.length + personalList.length})
+                        </button>
+                        <button onclick="setEventsScope('band')" class="px-3 py-1.5 rounded-lg font-bold transition ${eventsFilterScope === 'band' ? 'bg-sky-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'}">
+                            Solo Banda (${bandList.length})
+                        </button>
+                    </div>
+                    ${bandData ? `<span class="text-[11px] font-mono text-sky-400">Banda activa: <strong>${bandData.name || bandData.code}</strong></span>` : `<span class="text-[11px] font-mono text-zinc-500">Sin banda vinculada</span>`}
+                </div>
+            `;
+
+            const bandSectionHtml = `
+                <section class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-sky-900/50 pb-2.5">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2.5 h-5 bg-sky-500 rounded-full inline-block"></span>
+                            <h2 class="text-base font-black text-white uppercase tracking-wider">Eventos de la Banda</h2>
+                            <span class="text-xs font-mono font-bold bg-sky-950/80 text-sky-300 px-2 py-0.5 rounded-md border border-sky-800/60">${bandList.length}</span>
+                        </div>
+                        <span class="text-[11px] font-mono text-zinc-400">Ordenados por publicación</span>
+                    </div>
+                    ${
+                        bandList.length > 0
+                            ? `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${bandList.map(ev => buildEventCardHtml(ev, 'band', songsMap, amLeader)).join('')}</div>`
+                            : `<div class="bg-stage-card/50 border border-dashed border-zinc-800 rounded-2xl p-6 text-center text-xs text-zinc-500">
+                                ${bandData ? 'Aún no hay eventos publicados en esta banda.' : 'Únete o crea una banda para ver eventos compartidos aquí.'}
+                               </div>`
+                    }
+                </section>
+            `;
+
+            const personalSectionHtml = `
+                <section class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-indigo-900/40 pb-2.5">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2.5 h-5 bg-indigo-500 rounded-full inline-block"></span>
+                            <h2 class="text-base font-black text-white uppercase tracking-wider">Mis Eventos / Generales</h2>
+                            <span class="text-xs font-mono font-bold bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-800/60">${personalList.length}</span>
+                        </div>
+                        <span class="text-[11px] font-mono text-zinc-400">Orden alfabético (A–Z)</span>
+                    </div>
+                    ${
+                        personalList.length > 0
+                            ? `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${personalList.map(ev => buildEventCardHtml(ev, 'personal', songsMap, amLeader)).join('')}</div>`
+                            : `<div class="bg-stage-card/50 border border-dashed border-zinc-800 rounded-2xl p-6 text-center text-xs text-zinc-500">
+                                No tienes eventos personales guardados todavía.
+                               </div>`
+                    }
+                </section>
+            `;
+
+            if (eventsFilterScope === 'band') {
+                container.innerHTML = filterBarHtml + bandSectionHtml + personalSectionHtml;
+            } else {
+                container.innerHTML = filterBarHtml + personalSectionHtml + bandSectionHtml;
+            }
         }
 
         function filterSongs() {
